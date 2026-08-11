@@ -1,0 +1,21 @@
+# Secretos — NUNCA subir
+.env
+.env.local
+.env.*.local
+
+# Configuración local de Supabase (cada quien apunta a su proyecto).
+# La anon key no es un secreto, pero la config sí es por entorno.
+public/konekt-config.js
+
+# Dependencias
+node_modules/
+
+# Logs y temporales
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
