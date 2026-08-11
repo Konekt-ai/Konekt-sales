@@ -1,0 +1,61 @@
+# Konekt Sales · servicio de systemd (opción sin Docker)
+#
+# Instalar:
+#   sudo cp deploy/konekt-sales.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now konekt-sales
+#
+# Ver el estado y los logs:
+#   sudo systemctl status konekt-sales
+#   sudo journalctl -u konekt-sales -f
+#
+# Ajusta User, WorkingDirectory y la ruta de node si tu servidor difiere.
+
+[Unit]
+Description=Konekt Sales
+Documentation=file:/opt/konekt-sales/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=konekt
+Group=konekt
+WorkingDirectory=/opt/konekt-sales
+
+# Las variables se leen del .env. Debe ser propiedad de konekt y con chmod 600.
+EnvironmentFile=/opt/konekt-sales/.env
+
+# Ruta absoluta a node: systemd no usa el PATH de tu shell.
+# Verifica la tuya con:  which node
+ExecStart=/usr/bin/node server.js
+
+# Recarga sin cortar peticiones a medias: server.js atiende SIGTERM y cierra
+# ordenado. Si algo se cuelga, systemd lo mata a los 15s.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=konekt-sales
+
+# ---- Aislamiento ----
+# El proceso no necesita escribir en disco: todo el estado vive en Supabase.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

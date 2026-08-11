@@ -164,6 +164,13 @@
       async salir() {
         if (sb) await sb.auth.signOut();
       },
+      // Token de acceso para autenticarse contra nuestro propio backend (/api/*).
+      // getSession() lo renueva solo si está por vencer.
+      async token() {
+        if (!sb) return null;
+        const { data } = await sb.auth.getSession();
+        return data.session ? data.session.access_token : null;
+      },
       alCambiar(fn) {
         if (sb) sb.auth.onAuthStateChange((evento) => fn(evento));
       },

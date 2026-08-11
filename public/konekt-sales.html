@@ -1175,7 +1175,7 @@ function pantallaSetup(){
       <ol style="margin:12px 0 0 18px;padding:0;display:grid;gap:9px">
         <li>Crea un proyecto en <b>supabase.com</b>.</li>
         <li>Pega el contenido de <b>supabase/schema.sql</b> en el SQL Editor y ejecútalo.</li>
-        <li>Copia <b>public/konekt-config.example.js</b> como <b>public/konekt-config.js</b> y pon ahí la Project URL y la anon key.</li>
+        <li>Pon <b>SUPABASE_URL</b> y <b>SUPABASE_ANON_KEY</b> en el archivo <b>.env</b> del servidor y reinícialo.</li>
       </ol>
     </div>
     <button class="btn primary" style="margin-top:20px" onclick="location.reload()">Ya quedó · recargar</button>
@@ -1626,6 +1626,20 @@ function applyParsed(r){
 }
 
 const API_BASE=(window.KONEKT_API_BASE||"");
+// El backend exige sesión en /api/*: sin esto cualquiera con la URL pública
+// podría gastar el presupuesto de Anthropic. Se manda el token de Supabase.
+async function apiFetch(ruta,cuerpo){
+  const token=await db.auth.token();
+  if(!token) throw new Error("Tu sesión expiró. Vuelve a entrar.");
+  const res=await fetch(API_BASE+ruta,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+    body:JSON.stringify(cuerpo)
+  });
+  if(res.status===401) throw new Error("Tu sesión expiró. Vuelve a entrar.");
+  if(res.status===429) throw new Error("Demasiadas peticiones seguidas. Espera un momento.");
+  return res;
+}
 function val0(x){return (x!=null && x!=="No especificado" && x!=="")?x:null;}
 function clampStr(s,max){s=String(s==null?"":s).trim();if(s.length<=max)return s;return s.slice(0,max-1).replace(/\s+\S*$/,"")+"…";}
 
@@ -1634,7 +1648,7 @@ async function analizar(){
   if(!txt){state.aiStatus="Escribe primero el contexto arriba.";paintForm();return;}
   state.aiStatus="Analizando con Claude…";paintForm();
   try{
-    const res=await fetch(API_BASE+"/api/extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texto:txt})});
+    const res=await apiFetch("/api/extract",{texto:txt});
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||("HTTP "+res.status));}
     const d=await res.json();
     state.extraccion=d;mapExtract(d);state.analizado=true;
@@ -1693,7 +1707,7 @@ async function redactar(){
     metricas_proporcionadas:(state.extraccion&&state.extraccion.metricas_proporcionadas)||[]
   };
   try{
-    const res=await fetch(API_BASE+"/api/redactar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({datos})});
+    const res=await apiFetch("/api/redactar",{datos});
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||("HTTP "+res.status));}
     const r=await res.json();mapRedact(r);
     state.aiStatus="Propuesta redactada por Claude. Ajusta lo que quieras en \"Ajustes finos\".";

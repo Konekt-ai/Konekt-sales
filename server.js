@@ -11,41 +11,116 @@
  * Ejecutar:   npm start           (requiere Node 18+)
  * Abrir:      http://localhost:3000
  *
- * ⚠️  ESTO ES UN ENTORNO DE DESARROLLO.
- *     Los endpoints /api/* no tienen autenticación de usuario. No publiques
- *     este servidor en una URL accesible desde internet: cualquiera podría
- *     consumir el presupuesto de Anthropic. El límite por IP de abajo es un
- *     seguro mínimo, no un sustituto de autenticación (ver Fase 3 del plan).
+ * Los endpoints /api/* exigen una sesión válida de Supabase: el navegador manda
+ * su token en la cabecera Authorization y aquí se verifica contra Supabase antes
+ * de gastar un solo token de Anthropic.
  */
 
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+// En un contenedor hay que escuchar en todas las interfaces, no solo en loopback.
+const HOST = process.env.HOST || "0.0.0.0";
+const EN_PRODUCCION = process.env.NODE_ENV === "production";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 // Modelo: Sonnet 5 es un buen equilibrio calidad/costo/velocidad para extraer y redactar.
 // Puedes cambiarlo a "claude-opus-5" (más capaz) o "claude-haiku-4-5" (más barato/rápido).
 const MODEL = process.env.KONEKT_MODEL || "claude-sonnet-5";
 
-/* ---------- Límite de uso por IP (seguro mínimo de desarrollo) ---------- */
-// En memoria: se reinicia al reiniciar el servidor. Sustituir por autenticación
-// real + cuota por usuario antes de exponer esto fuera de la red local.
+// Detrás de nginx, Caddy o un balanceador, req.ip sería la IP del proxy y el
+// límite de uso de abajo estrangularía a todos los usuarios como si fueran uno.
+// TRUST_PROXY=1 hace que Express lea la IP real de X-Forwarded-For.
+if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
+
+app.disable("x-powered-by");
+
+// Cabeceras mínimas de seguridad. La app no carga nada de terceros: ni CDN,
+// ni tipografías externas, ni iframes. Lo único externo es la API de Supabase.
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "same-origin");
+  if (EN_PRODUCCION) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.static(path.join(__dirname, "public")));
+
+/* ---------- Configuración del navegador, servida desde el .env ----------
+   Así el despliegue necesita un solo archivo de configuración (.env) en vez de
+   dos. Va DESPUÉS de express.static: si alguien dejó un public/konekt-config.js
+   a mano, ese gana y esto es el respaldo. */
+app.get("/konekt-config.js", (req, res) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return res.status(404).type("application/javascript")
+      .send("/* Faltan SUPABASE_URL y SUPABASE_ANON_KEY en el .env del servidor */");
+  }
+  res.type("application/javascript");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(
+    "window.KONEKT_CONFIG=" +
+      JSON.stringify({ SUPABASE_URL, SUPABASE_ANON_KEY }) +
+      ";\n"
+  );
+});
+
+/* ---------- Autenticación: se exige sesión válida de Supabase ---------- */
+// Se usa la anon key: getUser() valida el token contra Supabase y devuelve el
+// usuario. Nunca hace falta la service_role key en este servidor.
+const sbAuth =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;
+
+async function requiereSesion(req, res, next) {
+  if (!sbAuth) {
+    return res.status(503).json({
+      error: "El servidor no tiene configurado Supabase (SUPABASE_URL / SUPABASE_ANON_KEY).",
+    });
+  }
+  const cabecera = req.headers.authorization || "";
+  const token = cabecera.startsWith("Bearer ") ? cabecera.slice(7).trim() : null;
+  if (!token) return res.status(401).json({ error: "Falta iniciar sesión." });
+
+  try {
+    const { data, error } = await sbAuth.auth.getUser(token);
+    if (error || !data || !data.user) {
+      return res.status(401).json({ error: "Sesión inválida o expirada." });
+    }
+    req.usuario = data.user;
+    next();
+  } catch (e) {
+    console.error("[auth]", e.message);
+    res.status(503).json({ error: "No se pudo verificar la sesión." });
+  }
+}
+
+/* ---------- Límite de uso por usuario ---------- */
+// En memoria: se reinicia junto con el proceso. Suficiente para una instancia.
+// Con varias réplicas habría que moverlo a Redis o a una tabla de Postgres.
 const VENTANA_MS = 5 * 60 * 1000;
-const MAX_PETICIONES = 40;
-const usoPorIP = new Map();
+const MAX_PETICIONES = Number(process.env.MAX_PETICIONES) || 40;
+const usoPorUsuario = new Map();
 
 function limitarUso(req, res, next) {
   const ahora = Date.now();
-  const ip = req.ip || "desconocida";
-  const registro = usoPorIP.get(ip);
+  const clave = (req.usuario && req.usuario.id) || req.ip || "desconocido";
+  const registro = usoPorUsuario.get(clave);
 
   if (!registro || ahora > registro.reinicioEn) {
-    usoPorIP.set(ip, { conteo: 1, reinicioEn: ahora + VENTANA_MS });
+    usoPorUsuario.set(clave, { conteo: 1, reinicioEn: ahora + VENTANA_MS });
     return next();
   }
   if (registro.conteo >= MAX_PETICIONES) {
@@ -56,6 +131,24 @@ function limitarUso(req, res, next) {
   }
   registro.conteo++;
   next();
+}
+
+// Evita que el Map crezca sin límite en un proceso de larga vida.
+const limpieza = setInterval(() => {
+  const ahora = Date.now();
+  for (const [clave, r] of usoPorUsuario) if (ahora > r.reinicioEn) usoPorUsuario.delete(clave);
+}, VENTANA_MS);
+limpieza.unref();
+
+/* ---------- Errores hacia el navegador ---------- */
+// En producción no se filtra el detalle interno: se registra en el log del
+// servidor y al usuario le llega un mensaje genérico.
+function responderError(res, e, contexto) {
+  console.error(`[${contexto}]`, e.message);
+  const esperado = e.esperado === true;
+  res.status(500).json({
+    error: esperado || !EN_PRODUCCION ? e.message : "Error del servidor. Intenta de nuevo.",
+  });
 }
 
 /* ---------- Llamada base a Anthropic con "tool use" para forzar JSON ---------- */
@@ -84,9 +177,11 @@ async function callClaude({ system, userText, tool, toolName, maxTokens = 8000 }
   // mismo presupuesto de max_tokens. Si se agota, no llega el bloque estructurado:
   // lo reportamos con un mensaje entendible en vez del error genérico.
   if (data.stop_reason === "max_tokens") {
-    throw new Error(
+    const err = new Error(
       "La respuesta se cortó por límite de tokens. Reduce el texto de entrada o sube maxTokens."
     );
+    err.esperado = true; // se le puede mostrar al usuario tal cual
+    throw err;
   }
 
   const block = (data.content || []).find((b) => b.type === "tool_use");
@@ -166,7 +261,7 @@ REGLA ABSOLUTA: NO INVENTES NADA. Devuelve únicamente lo que esté EXPLÍCITAME
 - metricas_proporcionadas SOLO debe contener cifras dadas por el usuario o calculables con datos dados. Si no hay, deja el arreglo vacío.
 Responde únicamente llamando a la herramienta guardar_extraccion.`;
 
-app.post("/api/extract", limitarUso, async (req, res) => {
+app.post("/api/extract", requiereSesion, limitarUso, async (req, res) => {
   try {
     const texto = (req.body && req.body.texto) || "";
     if (!texto.trim()) return res.status(400).json({ error: "Texto vacío" });
@@ -179,8 +274,7 @@ app.post("/api/extract", limitarUso, async (req, res) => {
     });
     res.json(out);
   } catch (e) {
-    console.error("[/api/extract]", e.message);
-    res.status(500).json({ error: e.message });
+    responderError(res, e, "/api/extract");
   }
 });
 
@@ -271,7 +365,7 @@ Reglas:
 - "solucion": explica breve y específico cómo Konekt lo resuelve.
 Responde únicamente llamando a la herramienta guardar_propuesta.`;
 
-app.post("/api/redactar", limitarUso, async (req, res) => {
+app.post("/api/redactar", requiereSesion, limitarUso, async (req, res) => {
   try {
     const datos = (req.body && req.body.datos) || {};
     const out = await callClaude({
@@ -283,23 +377,64 @@ app.post("/api/redactar", limitarUso, async (req, res) => {
     });
     res.json(out);
   } catch (e) {
-    console.error("[/api/redactar]", e.message);
-    res.status(500).json({ error: e.message });
+    responderError(res, e, "/api/redactar");
   }
 });
 
-/* ---------- salud / diagnóstico ---------- */
+/* ---------- salud / diagnóstico ----------
+   Sin autenticación a propósito: lo consultan Docker, systemd y el monitoreo.
+   No revela ningún secreto, solo si la configuración está completa. */
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, modelo: MODEL, apiKeyConfigurada: !!API_KEY });
+  const listo = !!API_KEY && !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
+  res.status(listo ? 200 : 503).json({
+    ok: listo,
+    modelo: MODEL,
+    anthropic: !!API_KEY,
+    supabase: !!SUPABASE_URL && !!SUPABASE_ANON_KEY,
+    entorno: EN_PRODUCCION ? "produccion" : "desarrollo",
+  });
 });
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "konekt-sales.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Konekt Sales corriendo en  http://localhost:${PORT}`);
-  console.log(`  Modelo:   ${MODEL}`);
-  console.log(`  API key:  ${API_KEY ? "detectada ✓" : "NO detectada ✗  (revisa tu .env)"}`);
-  console.log(`  Entorno:  desarrollo — /api/* sin autenticación, no exponer a internet\n`);
+/* ---------- arranque ---------- */
+function aviso(cond, textoOk, textoMal) {
+  console.log(`  ${cond ? "✓" : "✗"} ${cond ? textoOk : textoMal}`);
+}
+
+const servidor = app.listen(PORT, HOST, () => {
+  console.log(`\n  Konekt Sales · ${EN_PRODUCCION ? "producción" : "desarrollo"}`);
+  console.log(`  Escuchando en http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+  console.log(`  Modelo: ${MODEL}\n`);
+  aviso(!!API_KEY, "ANTHROPIC_API_KEY cargada", "Falta ANTHROPIC_API_KEY — los botones de IA no van a funcionar");
+  aviso(!!SUPABASE_URL && !!SUPABASE_ANON_KEY,
+        "Supabase configurado",
+        "Faltan SUPABASE_URL / SUPABASE_ANON_KEY — la app abrirá en la pantalla de configuración");
+  if (EN_PRODUCCION && !process.env.TRUST_PROXY) {
+    console.log("  ! Estás en producción sin TRUST_PROXY. Si hay nginx enfrente,");
+    console.log("    ponlo en 1 o el límite de uso tratará a todos como un solo usuario.");
+  }
+  console.log("");
 });
+
+// Cierre ordenado: Docker y systemd mandan SIGTERM y esperan. Sin esto, matan
+// el proceso a media petición y el usuario ve una conexión cortada.
+let cerrando = false;
+function cerrar(senal) {
+  if (cerrando) return;
+  cerrando = true;
+  console.log(`\n  ${senal} recibida, cerrando…`);
+  servidor.close(() => {
+    console.log("  Servidor cerrado limpiamente.");
+    process.exit(0);
+  });
+  // Si alguna conexión se queda colgada, no esperar para siempre.
+  setTimeout(() => {
+    console.error("  Cierre forzado tras 10s.");
+    process.exit(1);
+  }, 10000).unref();
+}
+process.on("SIGTERM", () => cerrar("SIGTERM"));
+process.on("SIGINT", () => cerrar("SIGINT"));

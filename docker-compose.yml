@@ -1,0 +1,40 @@
+services:
+  konekt-sales:
+    build: .
+    image: konekt-sales:latest
+    container_name: konekt-sales
+    restart: unless-stopped
+
+    # Las variables salen del .env del servidor. No se hornean en la imagen.
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+
+    # 127.0.0.1 a propósito: el puerto queda accesible solo desde la propia
+    # máquina, y nginx (o Caddy) es quien lo expone a internet con HTTPS.
+    # Si vas a probar sin proxy, cámbialo a  "3000:3000".
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # El contenedor no necesita escribir en disco: todo el estado vive en
+    # Supabase. Dejarlo de solo lectura reduce el daño si algo se cuela.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
