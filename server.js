@@ -11,15 +11,19 @@
  * Ejecutar:   npm start           (requiere Node 18+)
  * Abrir:      http://localhost:3000
  *
- * Los endpoints /api/* exigen una sesión válida de Supabase: el navegador manda
- * su token en la cabecera Authorization y aquí se verifica contra Supabase antes
- * de gastar un solo token de Anthropic.
+ * Los datos viven en SQLite, en un archivo dentro de datos/. No hay base de
+ * datos en línea ni servicio de base de datos que mantener corriendo.
+ *
+ * El navegador nunca toca la base: habla con /api/* y estas rutas hablan con
+ * SQLite. La sesión va en una cookie httpOnly.
  */
 
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
-const { createClient } = require("@supabase/supabase-js");
+const db = require("./db");
+const auth = require("./db/auth");
+const api = require("./rutas/api");
 
 const app = express();
 
@@ -28,8 +32,6 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const EN_PRODUCCION = process.env.NODE_ENV === "production";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 // Modelo: Sonnet 5 es un buen equilibrio calidad/costo/velocidad para extraer y redactar.
 // Puedes cambiarlo a "claude-opus-5" (más capaz) o "claude-haiku-4-5" (más barato/rápido).
 const MODEL = process.env.KONEKT_MODEL || "claude-sonnet-5";
@@ -42,7 +44,7 @@ if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PRO
 app.disable("x-powered-by");
 
 // Cabeceras mínimas de seguridad. La app no carga nada de terceros: ni CDN,
-// ni tipografías externas, ni iframes. Lo único externo es la API de Supabase.
+// ni tipografías externas, ni iframes. Todo se sirve desde este mismo origen.
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -56,56 +58,35 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ---------- Configuración del navegador, servida desde el .env ----------
-   Así el despliegue necesita un solo archivo de configuración (.env) en vez de
-   dos. Va DESPUÉS de express.static: si alguien dejó un public/konekt-config.js
-   a mano, ese gana y esto es el respaldo. */
-app.get("/konekt-config.js", (req, res) => {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return res.status(404).type("application/javascript")
-      .send("/* Faltan SUPABASE_URL y SUPABASE_ANON_KEY en el .env del servidor */");
-  }
-  res.type("application/javascript");
-  res.setHeader("Cache-Control", "no-store");
-  res.send(
-    "window.KONEKT_CONFIG=" +
-      JSON.stringify({ SUPABASE_URL, SUPABASE_ANON_KEY }) +
-      ";\n"
-  );
+
+/* ---------- salud / diagnóstico ----------
+   Sin autenticación a propósito: lo consultan Docker, systemd y el monitoreo.
+   No revela ningún secreto, solo si la configuración está completa. */
+app.get("/api/health", (req, res) => {
+  // La base local siempre esta: si el proceso arranco, el archivo existe.
+  // Lo unico que puede faltar es la llave de Anthropic, y eso solo afecta
+  // a los dos botones de IA del generador, no al CRM.
+  let usuarios = -1;
+  try { usuarios = db.uno("SELECT COUNT(*) AS n FROM usuarios").n; } catch (e) { usuarios = -1; }
+  const listo = usuarios >= 0;
+  res.status(listo ? 200 : 503).json({
+    ok: listo,
+    modelo: MODEL,
+    anthropic: !!API_KEY,
+    baseDatos: listo ? "sqlite" : "no disponible",
+    usuarios,
+    entorno: EN_PRODUCCION ? "produccion" : "desarrollo",
+  });
 });
 
-/* ---------- Autenticación: se exige sesión válida de Supabase ---------- */
-// Se usa la anon key: getUser() valida el token contra Supabase y devuelve el
-// usuario. Nunca hace falta la service_role key en este servidor.
-const sbAuth =
-  SUPABASE_URL && SUPABASE_ANON_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
+/* ---------- API del CRM ---------- */
+// Prospectos, actividades, clientes, tareas, calendario, plantillas y sesión.
+app.use("/api", api.router);
 
-async function requiereSesion(req, res, next) {
-  if (!sbAuth) {
-    return res.status(503).json({
-      error: "El servidor no tiene configurado Supabase (SUPABASE_URL / SUPABASE_ANON_KEY).",
-    });
-  }
-  const cabecera = req.headers.authorization || "";
-  const token = cabecera.startsWith("Bearer ") ? cabecera.slice(7).trim() : null;
-  if (!token) return res.status(401).json({ error: "Falta iniciar sesión." });
-
-  try {
-    const { data, error } = await sbAuth.auth.getUser(token);
-    if (error || !data || !data.user) {
-      return res.status(401).json({ error: "Sesión inválida o expirada." });
-    }
-    req.usuario = data.user;
-    next();
-  } catch (e) {
-    console.error("[auth]", e.message);
-    res.status(503).json({ error: "No se pudo verificar la sesión." });
-  }
-}
+/* ---------- Autenticación ----------
+   Vive en rutas/api.js, junto al resto de la sesión. Aquí solo se reutiliza
+   para proteger los dos endpoints de IA. */
+const requiereSesion = api.requiereSesion;
 
 /* ---------- Límite de uso por usuario ---------- */
 // En memoria: se reinicia junto con el proceso. Suficiente para una instancia.
@@ -381,20 +362,6 @@ app.post("/api/redactar", requiereSesion, limitarUso, async (req, res) => {
   }
 });
 
-/* ---------- salud / diagnóstico ----------
-   Sin autenticación a propósito: lo consultan Docker, systemd y el monitoreo.
-   No revela ningún secreto, solo si la configuración está completa. */
-app.get("/api/health", (req, res) => {
-  const listo = !!API_KEY && !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
-  res.status(listo ? 200 : 503).json({
-    ok: listo,
-    modelo: MODEL,
-    anthropic: !!API_KEY,
-    supabase: !!SUPABASE_URL && !!SUPABASE_ANON_KEY,
-    entorno: EN_PRODUCCION ? "produccion" : "desarrollo",
-  });
-});
-
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "konekt-sales.html"));
 });
@@ -409,15 +376,27 @@ const servidor = app.listen(PORT, HOST, () => {
   console.log(`  Escuchando en http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   console.log(`  Modelo: ${MODEL}\n`);
   aviso(!!API_KEY, "ANTHROPIC_API_KEY cargada", "Falta ANTHROPIC_API_KEY — los botones de IA no van a funcionar");
-  aviso(!!SUPABASE_URL && !!SUPABASE_ANON_KEY,
-        "Supabase configurado",
-        "Faltan SUPABASE_URL / SUPABASE_ANON_KEY — la app abrirá en la pantalla de configuración");
+  let nUsuarios = 0;
+  try { nUsuarios = db.uno("SELECT COUNT(*) AS n FROM usuarios").n; } catch (e) {}
+  console.log("  ✓ Base de datos: " + db.RUTA_DB);
+  aviso(nUsuarios > 0,
+        nUsuarios + " usuario(s) dados de alta",
+        "No hay ningún usuario. Crea el primero con:  npm run usuario");
   if (EN_PRODUCCION && !process.env.TRUST_PROXY) {
     console.log("  ! Estás en producción sin TRUST_PROXY. Si hay nginx enfrente,");
     console.log("    ponlo en 1 o el límite de uso tratará a todos como un solo usuario.");
   }
   console.log("");
 });
+
+// Las sesiones vencidas se quedarian en la tabla para siempre.
+const barrido = setInterval(() => {
+  try {
+    const n = auth.limpiarSesiones();
+    if (n) console.log(`  Sesiones vencidas eliminadas: ${n}`);
+  } catch (e) { console.error("[sesiones]", e.message); }
+}, 6 * 60 * 60 * 1000);
+barrido.unref();
 
 // Cierre ordenado: Docker y systemd mandan SIGTERM y esperan. Sin esto, matan
 // el proceso a media petición y el usuario ve una conexión cortada.
@@ -427,6 +406,7 @@ function cerrar(senal) {
   cerrando = true;
   console.log(`\n  ${senal} recibida, cerrando…`);
   servidor.close(() => {
+    db.cerrar();
     console.log("  Servidor cerrado limpiamente.");
     process.exit(0);
   });

@@ -112,16 +112,14 @@ if [ -f .env ]; then
   verde "Ya existe un .env. No lo toco."
 else
   cp .env.example .env
-  echo "Necesito tres datos. Los puedes pegar ahora o dejarlos vacios y editarlos despues."
+  echo "Los datos se guardan en una base local (datos/konekt.db)."
+  echo "Lo unico por configurar es la llave de Anthropic, y solo sirve para los"
+  echo "dos botones de IA del generador. La puedes dejar vacia."
   echo
-  read -r -p "  SUPABASE_URL      : " V_URL
-  read -r -p "  SUPABASE_ANON_KEY : " V_ANON
   read -r -p "  ANTHROPIC_API_KEY : " V_ANT
 
-  # El separador de sed es | para no chocar con las diagonales de las URLs.
-  [ -n "${V_URL:-}" ]  && sed -i "s|^SUPABASE_URL=.*|SUPABASE_URL=${V_URL}|" .env
-  [ -n "${V_ANON:-}" ] && sed -i "s|^SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${V_ANON}|" .env
-  [ -n "${V_ANT:-}" ]  && sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${V_ANT}|" .env
+  # El separador de sed es | para no chocar con las diagonales de la llave.
+  [ -n "${V_ANT:-}" ] && sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${V_ANT}|" .env
 
   sed -i 's|^NODE_ENV=.*|NODE_ENV=production|' .env
   sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=1|' .env
@@ -162,6 +160,41 @@ else
   rojo "El servicio no arranco. Revisa:  journalctl -u konekt-sales -n 40"
   exit 1
 fi
+
+# ---------------------------------------------------------------
+paso "Primer usuario"
+
+if sudo -u "$USUARIO" node scripts/usuario.js listar 2>/dev/null | grep -q "No hay usuarios"; then
+  amaril "La base esta vacia: sin usuarios nadie puede entrar."
+  read -r -p "Creo el primer administrador ahora? [S/n] " R
+  if [[ ! "${R:-S}" =~ ^[Nn] ]]; then
+    read -r -p "  Correo: " U_MAIL
+    read -r -p "  Nombre: " U_NOMBRE
+    sudo -u "$USUARIO" node scripts/usuario.js crear "$U_MAIL" "$U_NOMBRE" admin
+  else
+    amaril "Hazlo despues:  npm run usuario -- crear tu@correo.mx \"Tu Nombre\" admin"
+  fi
+else
+  verde "Ya hay usuarios dados de alta."
+fi
+
+# ---------------------------------------------------------------
+paso "Respaldo automatico"
+
+# Sin base en la nube, los respaldos son responsabilidad de este servidor.
+RUTA_NODE_ABS="$(command -v node)"
+CRON_LINEA="0 23 * * * cd $DESTINO && $RUTA_NODE_ABS scripts/respaldar.js >> $DESTINO/logs/respaldo.log 2>&1"
+mkdir -p "$DESTINO/logs"
+chown -R "$USUARIO:$USUARIO" "$DESTINO/logs"
+
+# crontab -l falla si no hay crontab todavia: por eso el || true.
+( sudo -u "$USUARIO" crontab -l 2>/dev/null || true ) | grep -v "respaldar.js" > /tmp/kcron || true
+echo "$CRON_LINEA" >> /tmp/kcron
+sudo -u "$USUARIO" crontab /tmp/kcron
+rm -f /tmp/kcron
+verde "Respaldo diario a las 11 pm en $DESTINO/respaldos (se guardan 30)."
+amaril "Eso protege del borrado accidental, NO de que muera el disco."
+amaril "Copia esa carpeta a otro lado cada cierto tiempo."
 
 # ---------------------------------------------------------------
 paso "nginx y HTTPS"
@@ -223,6 +256,9 @@ echo "  Ver logs:     sudo journalctl -u konekt-sales -f"
 echo "  Reiniciar:    sudo systemctl restart konekt-sales"
 echo "  Actualizar:   cd ${DESTINO} && sudo ./deploy/actualizar.sh"
 echo
-echo "  Antes de dar acceso al equipo, corre la prueba de RLS que esta"
-echo "  al final de supabase/README.md."
+echo "  Usuarios:     npm run usuario -- listar"
+echo "  Respaldar:    npm run respaldar"
+echo ""
+echo "  Los datos viven en $DESTINO/datos/konekt.db."
+echo "  Copia $DESTINO/respaldos a otro disco cada cierto tiempo."
 echo

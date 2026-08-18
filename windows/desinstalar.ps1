@@ -7,13 +7,14 @@
     Corre esto cuando muevas el servicio a Linux, para que esta maquina deje
     de levantarlo sola al prender.
 
-    NO borra el .env, los archivos del proyecto ni nada de Supabase.
+    NO borra el .env, los archivos del proyecto, la base ni los respaldos.
 #>
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 $TAREA    = "KonektSales"
+$TAREA_R  = "KonektSalesRespaldo"
 $PUERTO   = 3000
 $REGLA_FW = "Konekt Sales ($PUERTO)"
 $APP      = Split-Path $PSScriptRoot -Parent
@@ -50,6 +51,12 @@ foreach ($p in $sueltos) {
     }
 }
 
+$tareaR = Get-ScheduledTask -TaskName $TAREA_R -ErrorAction SilentlyContinue
+if ($tareaR) {
+    Unregister-ScheduledTask -TaskName $TAREA_R -Confirm:$false
+    Verde "Tarea de respaldo eliminada."
+}
+
 $regla = Get-NetFirewallRule -DisplayName $REGLA_FW -ErrorAction SilentlyContinue
 if ($regla) {
     Remove-NetFirewallRule -DisplayName $REGLA_FW
@@ -61,7 +68,7 @@ if ($regla) {
 Write-Host ""
 Verde "Konekt Sales ya no arranca solo en esta maquina."
 Write-Host ""
-Write-Host "  El .env, el proyecto y los datos en Supabase siguen intactos."
+Write-Host "  El .env, el proyecto y la base en datos\konekt.db siguen intactos."
 Write-Host "  Para volver a instalarlo aqui:  .\install-windows.ps1"
 Write-Host "  Para pasarlo a Linux:           ver DEPLOY.md"
 Write-Host ""

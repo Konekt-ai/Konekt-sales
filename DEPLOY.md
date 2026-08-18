@@ -1,9 +1,13 @@
 # Desplegar Konekt Sales
 
-La aplicación es un solo proceso de Node que sirve archivos estáticos y dos
-endpoints de IA. **Todos los datos viven en Supabase**, así que el servidor no
-guarda nada en disco: se puede reiniciar, mover o reconstruir sin perder
-información, y no necesita respaldos propios.
+La aplicación es un solo proceso de Node: sirve la interfaz, la API del CRM y
+dos endpoints de IA. **Los datos viven en una base SQLite local**, un solo
+archivo en `datos/konekt.db`. No hay servicio de base de datos que instalar ni
+nada en la nube.
+
+> **Eso significa que los respaldos son responsabilidad del servidor.** Si ese
+> disco muere sin copias, se pierde la cartera completa. Los instaladores
+> programan un respaldo diario, pero hay que sacar esas copias a otro lado.
 
 Cuatro caminos. Los tres de Linux terminan igual: la app escuchando en
 `127.0.0.1:3000` y nginx enfrente con HTTPS. El de Windows es un puente para
@@ -31,9 +35,8 @@ cd /opt/konekt-sales
 sudo ./install.sh
 ```
 
-Te va a preguntar cuatro cosas: las tres llaves (`SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`) y el dominio. Puedes dejarlas vacías y
-editar `/opt/konekt-sales/.env` después.
+Te va a preguntar la llave de Anthropic, el dominio, y si quieres crear el
+primer usuario administrador. La base se crea sola.
 
 Se puede volver a correr sin miedo: no pisa un `.env` que ya exista y no duplica
 nada.
@@ -122,11 +125,11 @@ Vale la pena tenerlo claro, porque son las razones para no quedarse aquí:
 | Cifrado | **No: HTTP plano** | HTTPS con certificado gratuito |
 | Expuesto a internet | No conviene | Sí, con nginx enfrente |
 
-**Sobre el HTTP sin cifrar:** tu contraseña no viaja en claro — el navegador la
-manda directo a Supabase, que siempre es HTTPS. Lo que sí cruza la red local sin
-cifrar es el token de sesión, en las llamadas a `/api/*`. En una red interna de
-confianza es un riesgo manejable por unas semanas; **para exponerlo a internet
-no lo es**. Ahí ya toca Linux con HTTPS.
+**Sobre el HTTP sin cifrar:** ahora que la autenticación es propia, **la
+contraseña sí viaja por la red local al iniciar sesión**, y la cookie de sesión
+viaja en cada petición. En una red interna de confianza es un riesgo acotado por
+unas semanas; **para exponerlo a internet no lo es**. Ahí ya toca HTTPS, y con
+él poner `COOKIE_SEGURA=1` en el `.env`.
 
 Por lo mismo, el instalador abre el puerto solo para perfiles de red **privada y
 de dominio**, nunca para redes públicas.
@@ -139,10 +142,20 @@ En la máquina Windows, para que deje de levantar el servicio sola:
 powershell -ExecutionPolicy Bypass -File .\windows\desinstalar.ps1
 ```
 
-Quita la tarea programada y la regla del firewall. No toca el `.env`, ni el
-proyecto, ni nada de Supabase. **Los datos no se migran: ya están en Supabase**,
-así que el servidor nuevo solo necesita las mismas tres llaves en su `.env` y
-queda con todo.
+Quita las tareas programadas y la regla del firewall. No toca el `.env`, ni el
+proyecto, ni la base.
+
+**Los datos sí se migran ahora**, y es fácil: son un archivo.
+
+```powershell
+# En Windows, antes de apagar el servicio
+npm run respaldar
+```
+
+Copia `datos\konekt.db` (o el respaldo más reciente) al servidor Linux, ponlo en
+`/opt/konekt-sales/datos/konekt.db`, ajusta el dueño con
+`chown konekt:konekt` y arranca. Se lleva todo: usuarios, contraseñas,
+prospectos, documentos y plantillas.
 
 ## Antes de empezar
 
@@ -151,9 +164,7 @@ Necesitas:
 - Un VPS con Linux (Ubuntu 22.04 o 24.04 va bien). Con 1 GB de RAM alcanza.
 - Un dominio o subdominio apuntando por DNS a la IP del servidor
   (por ejemplo `ventas.konekt.mx` → registro **A** → la IP).
-- El proyecto de Supabase ya creado y con `supabase/schema.sql` ejecutado.
-  Si no, ve primero a [`supabase/README.md`](supabase/README.md).
-- Tu `ANTHROPIC_API_KEY`.
+- Tu `ANTHROPIC_API_KEY` (opcional: solo para los botones de IA del generador).
 
 > **HTTPS no es opcional.** Sin él, las contraseñas y los tokens de sesión
 > viajan en claro. Los pasos de abajo lo incluyen y es gratis con Let's Encrypt.
@@ -186,11 +197,9 @@ nano .env
 chmod 600 .env
 ```
 
-Llena los cinco valores que importan:
+Llena lo que importa:
 
 ```ini
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOi...
 ANTHROPIC_API_KEY=sk-ant-...
 NODE_ENV=production
 TRUST_PROXY=1
@@ -348,9 +357,10 @@ En este orden. Si uno falla, no sigas al siguiente.
 
 4. **Escritura** — registra un prospecto, recarga la página. Debe seguir ahí.
 
-5. **RLS** — la prueba de cinco pasos al final de
-   [`supabase/README.md`](supabase/README.md). **No des de alta al equipo sin
-   hacerla:** verifica que un vendedor no alcance a ver la cartera de otro.
+5. **Aislamiento** — crea un segundo usuario con rol `vendedor`
+   (`npm run usuario -- crear ana@konekt.mx "Ana" vendedor`), entra con él y
+   comprueba que **no ve** los prospectos del primero. **No des de alta al
+   equipo sin hacer esta prueba.**
 
 6. **IA** — abre el generador, pega un texto y dale *Analizar con IA*.
 
@@ -388,9 +398,21 @@ sudo systemctl restart konekt-sales        # systemd
 **Cambiar una variable del .env** — edita el archivo y reinicia. Las variables
 se leen al arrancar.
 
-**Respaldos** — el servidor no guarda nada; todo está en Supabase. Los respaldos
-se configuran del lado de Supabase (Database → Backups). Del servidor, lo único
-irreemplazable es el `.env`: guárdalo en un gestor de contraseñas.
+**Respaldos** — esto ya no es opcional. La instalación deja un respaldo diario a
+las 11 pm en `respaldos/`, con rotación de 30. Se puede correr a mano:
+
+```bash
+npm run respaldar
+npm run respaldar -- /media/usb/konekt   # a otro disco
+```
+
+Usa `VACUUM INTO`, no una copia del archivo: eso da una copia consistente aunque
+alguien esté usando la app. Copiar el `.db` a mano mientras hay escrituras puede
+dejarlo corrupto.
+
+**Saca esas copias del servidor.** El respaldo local protege de un borrado
+accidental, no de que se queme el disco. Un USB, otra PC o un almacenamiento en
+red, con la periodicidad que aguante el negocio.
 
 **Rotar la llave de Anthropic** — genera una nueva en la consola, cámbiala en el
 `.env`, reinicia, y hasta entonces revoca la vieja.
@@ -403,7 +425,7 @@ irreemplazable es el `.env`: guárdalo en un gestor de contraseñas.
 | ------------------------------------------- | ------------------------------------------------------------------------- |
 | Sale la pantalla de configuración           | Faltan `SUPABASE_URL` / `SUPABASE_ANON_KEY` en el `.env`, o no reiniciaste |
 | `502 Bad Gateway`                           | La app no está corriendo. Revisa los logs                                  |
-| Login dice "No se pudo conectar"            | `SUPABASE_URL` mal escrita, o el proyecto de Supabase está pausado         |
+| Login dice "No se pudo conectar"            | El servicio no está corriendo. Revisa los logs                            |
 | Todo el equipo topa el límite de peticiones | Falta `TRUST_PROXY=1` en el `.env`                                         |
 | La IA responde 401                          | La sesión expiró. Salir y volver a entrar                                  |
 | La IA responde 503                          | Falta `ANTHROPIC_API_KEY` en el `.env`                                     |
@@ -422,8 +444,8 @@ Para que no haya sorpresas:
 - **Konekt AI en la ficha del prospecto** todavía no genera nada: muestra un
   estado vacío.
 - **Editar un prospecto ya creado** y **agendar tareas** desde la interfaz no
-  están; por ahora se hace desde el editor de tablas de Supabase.
-- **Una sola instancia.** El límite de uso vive en memoria, así que si algún día
-  corres dos réplicas, cada una llevará su propia cuenta.
+  están; por ahora se ajusta directamente en la base.
+- **Una sola instancia.** El límite de uso vive en memoria y SQLite es un
+  archivo local: esto corre en una máquina, no en varias a la vez.
 - **Sin monitoreo externo.** `/api/health` está listo para que le apuntes algo
   (UptimeRobot, Healthchecks.io o lo que uses), pero no hay nada configurado.

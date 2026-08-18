@@ -3,9 +3,6 @@
 .env.local
 .env.*.local
 
-# Configuración local de Supabase (cada quien apunta a su proyecto).
-# La anon key no es un secreto, pero la config sí es por entorno.
-public/konekt-config.js
 
 # Dependencias
 node_modules/
@@ -23,3 +20,10 @@ Thumbs.db
 # Logs del servicio en Windows
 logs/
 windows/node-ruta.txt
+
+# Base de datos local y respaldos: son datos, no codigo
+datos/
+respaldos/
+*.db
+*.db-wal
+*.db-shm

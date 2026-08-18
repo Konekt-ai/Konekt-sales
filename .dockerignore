@@ -8,9 +8,10 @@ node_modules
 .git
 .gitignore
 
+# Lo que SI entra: server.js, db/, rutas/, scripts/, public/ y package.json
+
 # No hacen falta dentro del contenedor
 _entrega-original
-supabase
 deploy
 *.md
 !README.md
@@ -18,8 +19,6 @@ Dockerfile
 .dockerignore
 docker-compose.yml
 
-# Config local del navegador: en producción la sirve el servidor desde el .env
-public/konekt-config.js
 
 *.log
 .DS_Store

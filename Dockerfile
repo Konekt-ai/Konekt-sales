@@ -25,7 +25,13 @@ RUN apk add --no-cache tini wget
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server.js ./
+COPY db ./db
+COPY rutas ./rutas
+COPY scripts ./scripts
 COPY public ./public
+
+# Carpetas de datos, con dueño node: el proceso no corre como root.
+RUN mkdir -p /app/datos /app/respaldos && chown -R node:node /app/datos /app/respaldos
 
 # Nunca correr como root dentro del contenedor.
 USER node

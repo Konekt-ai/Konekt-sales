@@ -43,12 +43,14 @@ StandardError=journal
 SyslogIdentifier=konekt-sales
 
 # ---- Aislamiento ----
-# El proceso no necesita escribir en disco: todo el estado vive en Supabase.
+# ProtectSystem=strict deja el disco en solo lectura salvo lo que se liste
+# en ReadWritePaths. La base SQLite, los respaldos y los logs SI necesitan
+# escritura: sin estas rutas el servicio arranca y truena al primer guardado.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=
+ReadWritePaths=/opt/konekt-sales/datos /opt/konekt-sales/respaldos /opt/konekt-sales/logs
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -169,17 +169,15 @@ if (Test-Path $rutaEnv) {
     $plantilla = Join-Path $APP ".env.example"
     if (-not (Test-Path $plantilla)) { Morir "Falta .env.example" }
 
-    Write-Host "Necesito tres datos. Puedes dejarlos vacios y editar el .env despues."
+    Write-Host "Los datos se guardan en una base local (datoskonekt.db)."
+    Write-Host "Lo unico que hay que configurar es la llave de Anthropic, y solo"
+    Write-Host "sirve para los dos botones de IA del generador. Puedes dejarla vacia."
     Write-Host ""
-    $vUrl  = Read-Host "  SUPABASE_URL      "
-    $vAnon = Read-Host "  SUPABASE_ANON_KEY "
-    $vAnt  = Read-Host "  ANTHROPIC_API_KEY "
+    $vAnt = Read-Host "  ANTHROPIC_API_KEY "
 
     $txt = Get-Content $plantilla -Raw
 
-    if ($vUrl)  { $txt = $txt -replace '(?m)^SUPABASE_URL=.*',      ("SUPABASE_URL=" + $vUrl) }
-    if ($vAnon) { $txt = $txt -replace '(?m)^SUPABASE_ANON_KEY=.*', ("SUPABASE_ANON_KEY=" + $vAnon) }
-    if ($vAnt)  { $txt = $txt -replace '(?m)^ANTHROPIC_API_KEY=.*', ("ANTHROPIC_API_KEY=" + $vAnt) }
+    if ($vAnt) { $txt = $txt -replace '(?m)^ANTHROPIC_API_KEY=.*', ("ANTHROPIC_API_KEY=" + $vAnt) }
 
     $txt = $txt -replace '(?m)^NODE_ENV=.*', 'NODE_ENV=production'
     # Sin nginx enfrente: Node atiende directo a la red local.
@@ -264,6 +262,53 @@ Start-ScheduledTask -TaskName $TAREA
 Start-Sleep -Seconds 6
 
 # ------------------------------------------------------------------
+Paso "Primer usuario"
+
+$cliUsuario = Join-Path $APP "scripts\usuario.js"
+$hayUsuarios = $false
+try {
+    $salida = & $nodeExe $cliUsuario listar 2>&1 | Out-String
+    $hayUsuarios = -not ($salida -match "No hay usuarios")
+} catch { }
+
+if ($hayUsuarios) {
+    Verde "Ya hay usuarios dados de alta."
+} else {
+    Amaril "La base esta vacia: sin usuarios nadie puede entrar."
+    $r = Read-Host "Creo el primer administrador ahora? [S/n]"
+    if ($r -notmatch '^[Nn]') {
+        $correo = Read-Host "  Correo"
+        $quien  = Read-Host "  Nombre"
+        Push-Location $APP
+        try { & $nodeExe $cliUsuario crear $correo $quien admin } finally { Pop-Location }
+    } else {
+        Amaril 'Hazlo despues con:  npm run usuario -- crear tu@correo.mx "Tu Nombre" admin'
+    }
+}
+
+# ------------------------------------------------------------------
+Paso "Respaldo automatico"
+
+# Al no usar una base en la nube, los respaldos son responsabilidad de esta
+# maquina. Sin esto, si el disco muere se pierde la cartera completa.
+$TAREA_RESP = "KonektSalesRespaldo"
+$vieja = Get-ScheduledTask -TaskName $TAREA_RESP -ErrorAction SilentlyContinue
+if ($vieja) { Unregister-ScheduledTask -TaskName $TAREA_RESP -Confirm:$false }
+
+$accionResp = New-ScheduledTaskAction -Execute $nodeExe `
+    -Argument (Join-Path "scripts" "respaldar.js") -WorkingDirectory $APP
+$dispResp   = New-ScheduledTaskTrigger -Daily -At 11pm
+$opcResp    = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+Register-ScheduledTask -TaskName $TAREA_RESP -Action $accionResp -Trigger $dispResp `
+    -Principal $principal -Settings $opcResp `
+    -Description "Konekt Sales - respaldo diario de la base" | Out-Null
+
+Verde "Respaldo diario a las 11 pm, en la carpeta respaldos (se guardan 30)."
+Amaril "Eso protege del borrado accidental, NO de que muera el disco."
+Amaril "Copia la carpeta respaldos a otro lado (USB, nube, otra PC) cada cierto tiempo."
+
+# ------------------------------------------------------------------
 Paso "Firewall"
 
 $reglaExiste = Get-NetFirewallRule -DisplayName $REGLA_FW -ErrorAction SilentlyContinue
@@ -298,7 +343,7 @@ if ($salud -and $salud.ok) {
     Verde "==============================================="
 } elseif ($salud) {
     Amaril "El servicio corre, pero falta configuracion:"
-    Amaril ("  Supabase: {0}   Anthropic: {1}" -f $salud.supabase, $salud.anthropic)
+    Amaril ("  Base de datos: {0}   Anthropic: {1}" -f $salud.baseDatos, $salud.anthropic)
     Amaril "Edita $rutaEnv y luego:  Restart-ScheduledTask -TaskName $TAREA"
 } else {
     Rojo "El servicio no respondio."
@@ -324,5 +369,5 @@ Write-Host "  Actualizar:   powershell -ExecutionPolicy Bypass -File .\windows\a
 Write-Host "  Desinstalar:  powershell -ExecutionPolicy Bypass -File .\windows\desinstalar.ps1"
 Write-Host ""
 Amaril "  Esto va por HTTP sin cifrar: usalo solo en la red interna."
-Amaril "  Antes de dar acceso al equipo, corre la prueba de RLS de supabase\README.md."
+Amaril "  Comprueba que un vendedor no vea la cartera de otro antes de dar accesos."
 Write-Host ""
