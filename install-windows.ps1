@@ -179,7 +179,7 @@ if (Test-Path $rutaEnv) {
     $plantilla = Join-Path $APP ".env.example"
     if (-not (Test-Path $plantilla)) { Morir "Falta .env.example" }
 
-    Write-Host "Los datos se guardan en una base local (datoskonekt.db)."
+    Write-Host "Los datos se guardan en una base local (datos\konekt.db)."
     Write-Host "Lo unico que hay que configurar es la llave de Anthropic, y solo"
     Write-Host "sirve para los dos botones de IA del generador. Puedes dejarla vacia."
     Write-Host ""
