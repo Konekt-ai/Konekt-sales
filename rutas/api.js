@@ -54,6 +54,11 @@ function borrarCookie(res) {
 
 /** Deja req.usuario listo, o corta con 401. */
 function requiereSesion(req, res, next) {
+  // Sin login: todos comparten el usuario local y nadie tiene que entrar.
+  if (auth.SIN_LOGIN) {
+    req.usuario = auth.usuarioLocal();
+    return next();
+  }
   const usuario = auth.usuarioDeSesion(leerCookie(req, COOKIE));
   if (!usuario) return res.status(401).json({ error: "Falta iniciar sesión." });
   req.usuario = usuario;
@@ -207,6 +212,7 @@ router.post("/auth/salir", ruta((req, res) => {
 }));
 
 router.get("/auth/yo", ruta((req, res) => {
+  if (auth.SIN_LOGIN) return res.json({ usuario: auth.usuarioLocal(), sinLogin: true });
   const usuario = auth.usuarioDeSesion(leerCookie(req, COOKIE));
   if (!usuario) return res.status(401).json({ error: "Sin sesión." });
   res.json({ usuario });

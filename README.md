@@ -21,7 +21,8 @@ La API key vive solo en el servidor; el navegador nunca la ve.
    ANTHROPIC_API_KEY=sk-ant-...
    ```
    La base de datos se crea sola en `datos/konekt.db` al arrancar.
-4. Crear el primer usuario:
+4. Por omisión se entra **sin contraseña** (`SIN_LOGIN=1` en el `.env`). Si
+   quieres pedir login, comenta esa línea y da de alta usuarios:
    ```bash
    npm run usuario -- crear tu@correo.mx "Tu Nombre" admin
    ```
@@ -86,6 +87,17 @@ cada consulta de prospectos se filtra por `vendedor_id` salvo que el usuario sea
 gerente o admin. Antes lo imponía Postgres con RLS y era imposible saltárselo;
 ahora es código, así que cualquier consulta nueva tiene que respetar ese filtro.
 
+### Acceso
+
+Con `SIN_LOGIN=1` (lo que trae el `.env.example`) **no se pide contraseña**:
+se abre la página y ya estás dentro. Todos comparten un mismo usuario local, así
+que todos ven la misma cartera.
+
+El sistema de sesiones sigue completo en el código, solo está en pausa. Para
+volver a pedir login: quita `SIN_LOGIN` del `.env`, reinicia y crea usuarios con
+`npm run usuario`. Lo capturado hasta ese momento queda a nombre del usuario
+local, no se pierde nada.
+
 ## Endpoints
 
 | Método | Ruta                | Sesión | Qué hace                                              |
@@ -136,8 +148,9 @@ verificación están en [`DEPLOY.md`](DEPLOY.md).
 - **Los respaldos ahora son tuyos.** Toda la cartera vive en `datos/konekt.db`.
   El instalador programa un respaldo diario a `respaldos/`, pero eso protege del
   borrado accidental, **no de que muera el disco**: copia esa carpeta a otro lado.
-- **Comprueba el aislamiento antes de dar accesos.** Entra con dos usuarios
-  distintos y verifica que un vendedor no vea la cartera del otro.
+- **Sin login, cualquiera que alcance el puerto entra.** No hay contraseña que
+  lo detenga y puede borrar cartera. Es aceptable en una red interna cerrada;
+  no lo es en internet, ni en una red con invitados o wifi abierto.
 - La exportación a PDF sigue usando el diálogo de impresión del navegador.
   Funciona para demo; para que sea consistente hay que renderizar en servidor.
 - La ficha del prospecto aún no genera el análisis de Konekt AI: muestra un
@@ -149,7 +162,8 @@ verificación están en [`DEPLOY.md`](DEPLOY.md).
 
 | Tema                    | Estado                                                     |
 | ----------------------- | ---------------------------------------------------------- |
-| Base de datos y sesión  | Listo — SQLite local, alcance por vendedor en la API  |
+| Base de datos           | Listo — SQLite local, en un solo archivo             |
+| Acceso                  | Sin login (`SIN_LOGIN=1`). El login existe, en pausa |
 | Alta y pipeline         | Listo — se crea, se arrastra y persiste                    |
 | Editar prospecto        | Pendiente                                                  |
 | PDF robusto en servidor | Pendiente — render con Chromium headless, sin tocar diseño |

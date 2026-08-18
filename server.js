@@ -74,6 +74,7 @@ app.get("/api/health", (req, res) => {
     modelo: MODEL,
     anthropic: !!API_KEY,
     baseDatos: listo ? "sqlite" : "no disponible",
+    sinLogin: auth.SIN_LOGIN,
     usuarios,
     entorno: EN_PRODUCCION ? "produccion" : "desarrollo",
   });
@@ -376,12 +377,19 @@ const servidor = app.listen(PORT, HOST, () => {
   console.log(`  Escuchando en http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   console.log(`  Modelo: ${MODEL}\n`);
   aviso(!!API_KEY, "ANTHROPIC_API_KEY cargada", "Falta ANTHROPIC_API_KEY — los botones de IA no van a funcionar");
-  let nUsuarios = 0;
-  try { nUsuarios = db.uno("SELECT COUNT(*) AS n FROM usuarios").n; } catch (e) {}
   console.log("  ✓ Base de datos: " + db.RUTA_DB);
-  aviso(nUsuarios > 0,
-        nUsuarios + " usuario(s) dados de alta",
-        "No hay ningún usuario. Crea el primero con:  npm run usuario");
+  if (auth.SIN_LOGIN) {
+    try { auth.usuarioLocal(); } catch (e) { console.error("[usuario local]", e.message); }
+    console.log("  ! SIN_LOGIN activo: se entra sin contraseña y todos comparten");
+    console.log("    la misma cartera. Solo para red interna: cualquiera que");
+    console.log("    alcance este puerto entra y puede borrar datos.");
+  } else {
+    let nUsuarios = 0;
+    try { nUsuarios = db.uno("SELECT COUNT(*) AS n FROM usuarios").n; } catch (e) {}
+    aviso(nUsuarios > 0,
+          nUsuarios + " usuario(s) dados de alta",
+          "No hay ningún usuario. Crea el primero con:  npm run usuario");
+  }
   if (EN_PRODUCCION && !process.env.TRUST_PROXY) {
     console.log("  ! Estás en producción sin TRUST_PROXY. Si hay nginx enfrente,");
     console.log("    ponlo en 1 o el límite de uso tratará a todos como un solo usuario.");

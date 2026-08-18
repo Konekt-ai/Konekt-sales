@@ -122,6 +122,8 @@ else
   [ -n "${V_ANT:-}" ] && sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${V_ANT}|" .env
 
   sed -i 's|^NODE_ENV=.*|NODE_ENV=production|' .env
+  # Sin login: se entra directo, sin contrasena. Ver .env.example.
+  sed -i 's|^SIN_LOGIN=.*|SIN_LOGIN=1|' .env
   sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=1|' .env
   # 127.0.0.1: el puerto 3000 no queda expuesto, solo nginx lo alcanza.
   sed -i 's|^HOST=.*|HOST=127.0.0.1|' .env
@@ -164,7 +166,9 @@ fi
 # ---------------------------------------------------------------
 paso "Primer usuario"
 
-if sudo -u "$USUARIO" node scripts/usuario.js listar 2>/dev/null | grep -q "No hay usuarios"; then
+if grep -q "^SIN_LOGIN=1" .env 2>/dev/null; then
+  amaril "SIN_LOGIN activo: se entra sin contrasena, no hace falta crear usuarios."
+elif sudo -u "$USUARIO" node scripts/usuario.js listar 2>/dev/null | grep -q "No hay usuarios"; then
   amaril "La base esta vacia: sin usuarios nadie puede entrar."
   read -r -p "Creo el primer administrador ahora? [S/n] " R
   if [[ ! "${R:-S}" =~ ^[Nn] ]]; then

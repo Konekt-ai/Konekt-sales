@@ -9,6 +9,12 @@ nada en la nube.
 > disco muere sin copias, se pierde la cartera completa. Los instaladores
 > programan un respaldo diario, pero hay que sacar esas copias a otro lado.
 
+> **Y viene sin login.** El `.env` trae `SIN_LOGIN=1`: se abre la página y ya
+> estás dentro, sin contraseña. Sirve para una red interna cerrada. **No lo
+> publiques a internet así**: cualquiera con la URL entraría y podría borrar la
+> cartera. Para activar el login, quita esa línea del `.env`, reinicia y crea
+> usuarios con `npm run usuario`.
+
 Cuatro caminos. Los tres de Linux terminan igual: la app escuchando en
 `127.0.0.1:3000` y nginx enfrente con HTTPS. El de Windows es un puente para
 arrancar ya en la red interna, sin cifrado.
@@ -35,8 +41,8 @@ cd /opt/konekt-sales
 sudo ./install.sh
 ```
 
-Te va a preguntar la llave de Anthropic, el dominio, y si quieres crear el
-primer usuario administrador. La base se crea sola.
+Te va a preguntar la llave de Anthropic y el dominio. La base se crea sola y,
+como viene sin login, no hace falta dar de alta a nadie.
 
 Se puede volver a correr sin miedo: no pisa un `.env` que ya exista y no duplica
 nada.
@@ -125,11 +131,10 @@ Vale la pena tenerlo claro, porque son las razones para no quedarse aquí:
 | Cifrado | **No: HTTP plano** | HTTPS con certificado gratuito |
 | Expuesto a internet | No conviene | Sí, con nginx enfrente |
 
-**Sobre el HTTP sin cifrar:** ahora que la autenticación es propia, **la
-contraseña sí viaja por la red local al iniciar sesión**, y la cookie de sesión
-viaja en cada petición. En una red interna de confianza es un riesgo acotado por
-unas semanas; **para exponerlo a internet no lo es**. Ahí ya toca HTTPS, y con
-él poner `COOKIE_SEGURA=1` en el `.env`.
+**Sobre el HTTP sin cifrar:** como viene sin login, no hay contraseñas viajando
+por la red — pero tampoco hay nada que impida entrar. En una red interna cerrada
+es un riesgo acotado; **para internet no lo es**. Cuando lo expongas: HTTPS,
+quitar `SIN_LOGIN` y poner `COOKIE_SEGURA=1` en el `.env`.
 
 Por lo mismo, el instalador abre el puerto solo para perfiles de red **privada y
 de dominio**, nunca para redes públicas.
@@ -357,10 +362,10 @@ En este orden. Si uno falla, no sigas al siguiente.
 
 4. **Escritura** — registra un prospecto, recarga la página. Debe seguir ahí.
 
-5. **Aislamiento** — crea un segundo usuario con rol `vendedor`
-   (`npm run usuario -- crear ana@konekt.mx "Ana" vendedor`), entra con él y
-   comprueba que **no ve** los prospectos del primero. **No des de alta al
-   equipo sin hacer esta prueba.**
+5. **Acceso** — comprueba en qué modo quedó:
+   `curl https://ventas.konekt.mx/api/health` trae `"sinLogin":true` o `false`.
+   Si va a estar expuesto a internet **tiene que ser `false`**; quita
+   `SIN_LOGIN` del `.env`, reinicia y crea usuarios con `npm run usuario`.
 
 6. **IA** — abre el generador, pega un texto y dale *Analizar con IA*.
 

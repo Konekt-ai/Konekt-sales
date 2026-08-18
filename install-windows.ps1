@@ -180,6 +180,8 @@ if (Test-Path $rutaEnv) {
     if ($vAnt) { $txt = $txt -replace '(?m)^ANTHROPIC_API_KEY=.*', ("ANTHROPIC_API_KEY=" + $vAnt) }
 
     $txt = $txt -replace '(?m)^NODE_ENV=.*', 'NODE_ENV=production'
+    # Sin login: se entra directo, sin contrasena. Ver .env.example.
+    $txt = $txt -replace '(?m)^SIN_LOGIN=.*', 'SIN_LOGIN=1'
     # Sin nginx enfrente: Node atiende directo a la red local.
     $txt = $txt -replace '(?m)^HOST=.*', 'HOST=0.0.0.0'
     # Sin proxy, TRUST_PROXY debe quedar vacio. Si se activa sin proxy real,
@@ -265,13 +267,16 @@ Start-Sleep -Seconds 6
 Paso "Primer usuario"
 
 $cliUsuario = Join-Path $APP "scripts\usuario.js"
-$hayUsuarios = $false
+$sinLogin = (Get-Content $rutaEnv -Raw) -match "(?m)^SIN_LOGIN=1"
+$hayUsuarios = $sinLogin
 try {
     $salida = & $nodeExe $cliUsuario listar 2>&1 | Out-String
     $hayUsuarios = -not ($salida -match "No hay usuarios")
 } catch { }
 
-if ($hayUsuarios) {
+if ($sinLogin) {
+    Verde "SIN_LOGIN activo: se entra sin contrasena, no hace falta crear usuarios."
+} elseif ($hayUsuarios) {
     Verde "Ya hay usuarios dados de alta."
 } else {
     Amaril "La base esta vacia: sin usuarios nadie puede entrar."

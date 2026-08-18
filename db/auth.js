@@ -140,6 +140,42 @@ function limpiarSesiones() {
 }
 
 /* ---------------------------------------------------------------------
+ *  Modo sin login
+ * ------------------------------------------------------------------- */
+/**
+ * Con SIN_LOGIN=1 no se pide contraseña: todo el mundo entra directo y
+ * comparte un mismo usuario local. Está pensado para una red interna.
+ *
+ * No se borró nada del sistema de sesiones: sigue completo aquí arriba.
+ * Para volver a pedir contraseña basta con quitar SIN_LOGIN del .env y dar
+ * de alta usuarios con  npm run usuario.
+ *
+ * El usuario local existe de verdad en la tabla para que los prospectos, las
+ * actividades y los documentos sigan teniendo dueño y las llaves foráneas se
+ * cumplan. Si mañana se activa el login, todo lo capturado queda colgando de
+ * él y no se pierde nada.
+ */
+const SIN_LOGIN = process.env.SIN_LOGIN === "1";
+const CORREO_LOCAL = "local@konekt";
+
+let cacheLocal = null;
+
+function usuarioLocal() {
+  if (cacheLocal) return cacheLocal;
+  let u = uno("SELECT id, email, nombre, rol FROM usuarios WHERE email = ?", CORREO_LOCAL);
+  if (!u) {
+    const id = nuevoId();
+    correr(
+      "INSERT INTO usuarios (id, email, password_hash, nombre, rol) VALUES (?, ?, ?, ?, ?)",
+      id, CORREO_LOCAL, "sin-login", process.env.USUARIO_NOMBRE || "Konekt", "admin"
+    );
+    u = uno("SELECT id, email, nombre, rol FROM usuarios WHERE id = ?", id);
+  }
+  cacheLocal = u;
+  return u;
+}
+
+/* ---------------------------------------------------------------------
  *  Alcance por rol
  * ------------------------------------------------------------------- */
 
@@ -157,6 +193,8 @@ function esAdmin(usuario) {
 }
 
 module.exports = {
+  SIN_LOGIN,
+  usuarioLocal,
   hashear,
   verificar,
   crearUsuario,

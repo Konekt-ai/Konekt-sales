@@ -579,7 +579,7 @@ body.embed .layout{height:100vh}
       <div class="gl">Gestión</div>
       <div class="nav" data-view="admin" onclick="go('admin')"><svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Panel del admin</div>
     </div>
-    <div class="user"><div class="avatar" id="u-avatar">·</div><div style="flex:1;min-width:0"><div class="nm" id="u-nombre">—</div><div class="rl" id="u-rol">Sin sesión</div></div><span class="link" style="font-size:11.5px;cursor:pointer" onclick="salir()" title="Cerrar sesión">Salir</span></div>
+    <div class="user"><div class="avatar" id="u-avatar">·</div><div style="flex:1;min-width:0"><div class="nm" id="u-nombre">—</div><div class="rl" id="u-rol">Sin sesión</div></div><span class="link" id="u-salir" style="font-size:11.5px;cursor:pointer" onclick="salir()" title="Cerrar sesión">Salir</span></div>
   </aside>
 
   <main class="main">
@@ -1215,8 +1215,12 @@ function pintarUsuario(){
   if(nm) nm.textContent=perfil.nombre||"—";
   if(rl) rl.textContent=ETIQUETA[perfil.rol]||perfil.rol;
   if(av) av.textContent=(perfil.nombre||"?").charAt(0).toUpperCase();
+  // Sin login no hay sesion que cerrar: el boton sobra.
+  const salirBtn=document.getElementById("u-salir");
+  if(salirBtn) salirBtn.style.display=window.__sinLogin?"none":"";
+
   // El panel del admin solo se muestra a quien puede ver a todo el equipo.
-  // Es cosmético: quien manda de verdad son las políticas RLS de Postgres.
+  // Es cosmético: quien manda de verdad es el filtro de rutas/api.js.
   const navAdmin=document.querySelector('.nav[data-view="admin"]');
   if(navAdmin) navAdmin.style.display=(perfil.rol==="vendedor")?"none":"";
 }
@@ -1236,13 +1240,16 @@ async function arrancar(){
     el.innerHTML=bloqueError("No se pudo contactar al servidor. Revisa que siga encendido.");
     return;
   }
-  if(salud && salud.usuarios===0){ el.innerHTML=pantallaSetup(); return; }
+  // Sin login no hay nada que configurar ni a quien pedirle contrasena.
+  const sinLogin = !!(salud && salud.sinLogin);
+  if(!sinLogin && salud && salud.usuarios===0){ el.innerHTML=pantallaSetup(); return; }
 
   let usuario=null;
   try{ usuario=await db.auth.perfil(); }
   catch(e){ el.innerHTML=bloqueError(e.message); return; }
 
   if(!usuario){ el.innerHTML=pantallaLogin(); return; }
+  window.__sinLogin=sinLogin;
 
   perfil=usuario;
   pintarUsuario();
