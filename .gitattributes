@@ -1,0 +1,19 @@
+# Konekt Sales se despliega en Linux. Estos archivos DEBEN quedar con finales
+# de linea LF sin importar el sistema donde se editen: un script con CRLF falla
+# en el servidor con "bad interpreter: /usr/bin/env bash^M", y un archivo de
+# systemd o nginx con CRLF simplemente no carga.
+
+* text=auto eol=lf
+
+*.sh          text eol=lf
+*.service     text eol=lf
+*.conf        text eol=lf
+Dockerfile    text eol=lf
+.env.example  text eol=lf
+*.sql         text eol=lf
+*.yml         text eol=lf
+
+# Binarios: que git no los toque
+*.png binary
+*.jpg binary
+*.woff2 binary

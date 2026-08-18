@@ -5,15 +5,50 @@ endpoints de IA. **Todos los datos viven en Supabase**, así que el servidor no
 guarda nada en disco: se puede reiniciar, mover o reconstruir sin perder
 información, y no necesita respaldos propios.
 
-Hay dos caminos. Los dos terminan igual: la app escuchando en `127.0.0.1:3000`
+Hay tres caminos. Todos terminan igual: la app escuchando en `127.0.0.1:3000`
 y nginx enfrente con HTTPS.
 
-| Camino                   | Cuándo conviene                                                            |
-| ------------------------ | -------------------------------------------------------------------------- |
-| **Docker**               | Lo normal. No peleas con versiones de Node y se reinicia solo. Recomendado. |
-| **Node + systemd**       | Si no quieres Docker en el servidor, o el VPS tiene poca memoria.           |
+| Camino             | Cuándo conviene                                                          |
+| ------------------ | ------------------------------------------------------------------------ |
+| **`install.sh`**   | Debian o Ubuntu. Un comando y queda todo listo. **Empieza por aquí.**     |
+| **Docker**         | Si prefieres contenedores, o el servidor no es Debian ni Ubuntu.         |
+| **Node + systemd** | Paso a paso a mano, para ver qué hace cada cosa o ajustar algo.          |
 
 ---
+
+## Instalación en un comando
+
+En un servidor **Debian o Ubuntu recién instalado**, esto hace todo: instala
+Node, nginx y certbot, crea el usuario del servicio, te pregunta las tres llaves
+del `.env`, registra el servicio en systemd, configura el dominio y levanta el
+firewall.
+
+```bash
+sudo git clone https://github.com/Konekt-ai/Konekt-sales.git /opt/konekt-sales
+cd /opt/konekt-sales
+sudo ./install.sh
+```
+
+Te va a preguntar cuatro cosas: las tres llaves (`SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`) y el dominio. Puedes dejarlas vacías y
+editar `/opt/konekt-sales/.env` después.
+
+Se puede volver a correr sin miedo: no pisa un `.env` que ya exista y no duplica
+nada.
+
+**Para actualizar**, más adelante:
+
+```bash
+cd /opt/konekt-sales
+sudo ./deploy/actualizar.sh
+```
+
+Trae los cambios, reinstala dependencias solo si cambiaron, reinicia y comprueba
+la salud. **Si el servicio no responde bien después de actualizar, regresa solo
+a la versión anterior.**
+
+> El resto de este documento explica los mismos pasos a mano, por si prefieres
+> ir viendo qué hace cada uno, o si tu servidor no es Debian ni Ubuntu.
 
 ## Antes de empezar
 

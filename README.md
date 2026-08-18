@@ -42,10 +42,12 @@ Para verificar que la llave de Anthropic se cargó: <http://localhost:3000/api/h
 server.js                       backend Express. Único que habla con Anthropic.
 package.json                    dependencias y scripts
 .env.example                    plantilla de configuración (copiar como .env)
+install.sh                      instalador para Debian/Ubuntu: un solo comando
 DEPLOY.md                       cómo subirlo a un VPS, paso a paso
 Dockerfile                      imagen de producción
 docker-compose.yml              camino con Docker
 deploy/
+  actualizar.sh                 git pull + reinicio, con vuelta atrás si falla
   konekt-sales.service          camino sin Docker: servicio de systemd
   nginx.conf                    proxy inverso con HTTPS (para ambos caminos)
 supabase/
@@ -84,8 +86,20 @@ Anthropic.
 
 ## Desplegar
 
-Ver [`DEPLOY.md`](DEPLOY.md). Cubre los dos caminos —Docker o Node con
-systemd— más nginx, HTTPS, firewall y las pruebas de verificación.
+En un servidor Debian o Ubuntu recién instalado:
+
+```bash
+sudo git clone https://github.com/Konekt-ai/Konekt-sales.git /opt/konekt-sales
+cd /opt/konekt-sales
+sudo ./install.sh
+```
+
+Instala Node, nginx y certbot, crea el usuario del servicio, pregunta las llaves,
+registra el servicio y levanta el firewall. Para actualizar después:
+`sudo ./deploy/actualizar.sh`.
+
+El detalle completo, los otros caminos (Docker o paso a paso) y las pruebas de
+verificación están en [`DEPLOY.md`](DEPLOY.md).
 
 ## Advertencias para esta etapa
 
