@@ -13,6 +13,12 @@ Dockerfile    text eol=lf
 *.sql         text eol=lf
 *.yml         text eol=lf
 
+# Windows: PowerShell y los .cmd van con CRLF. Un archivo .cmd con solo LF
+# puede portarse raro con goto y bloques de varias lineas.
+*.ps1         text eol=crlf
+*.cmd         text eol=crlf
+*.bat         text eol=crlf
+
 # Binarios: que git no los toque
 *.png binary
 *.jpg binary

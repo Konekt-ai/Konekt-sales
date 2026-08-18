@@ -5,14 +5,16 @@ endpoints de IA. **Todos los datos viven en Supabase**, así que el servidor no
 guarda nada en disco: se puede reiniciar, mover o reconstruir sin perder
 información, y no necesita respaldos propios.
 
-Hay tres caminos. Todos terminan igual: la app escuchando en `127.0.0.1:3000`
-y nginx enfrente con HTTPS.
+Cuatro caminos. Los tres de Linux terminan igual: la app escuchando en
+`127.0.0.1:3000` y nginx enfrente con HTTPS. El de Windows es un puente para
+arrancar ya en la red interna, sin cifrado.
 
-| Camino             | Cuándo conviene                                                          |
-| ------------------ | ------------------------------------------------------------------------ |
-| **`install.sh`**   | Debian o Ubuntu. Un comando y queda todo listo. **Empieza por aquí.**     |
-| **Docker**         | Si prefieres contenedores, o el servidor no es Debian ni Ubuntu.         |
-| **Node + systemd** | Paso a paso a mano, para ver qué hace cada cosa o ajustar algo.          |
+| Camino                    | Cuándo conviene                                                     |
+| ------------------------- | ------------------------------------------------------------------- |
+| **`install-windows.ps1`** | Windows 10/11. Para arrancar hoy en la red interna. Sin HTTPS.      |
+| **`install.sh`**          | Debian o Ubuntu, un comando. **El destino final.**                  |
+| **Docker**                | Si prefieres contenedores, o el servidor no es Debian ni Ubuntu.    |
+| **Node + systemd**        | Paso a paso a mano, para ver qué hace cada cosa.                    |
 
 ---
 
@@ -49,6 +51,72 @@ a la versión anterior.**
 
 > El resto de este documento explica los mismos pasos a mano, por si prefieres
 > ir viendo qué hace cada uno, o si tu servidor no es Debian ni Ubuntu.
+
+---
+
+## Windows 10 · como paso intermedio
+
+Sirve para arrancar hoy en la red interna, sin esperar a tener Linux. La
+aplicación es la misma; lo único que cambia es cómo se mantiene viva.
+
+Abre **PowerShell como administrador** y:
+
+```powershell
+cd C:\konekt-sales
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+Instala Node si falta (con winget), instala dependencias, te pregunta las tres
+llaves, registra una **tarea programada** que arranca el servicio al prender la
+PC y lo revive si se cae, abre el puerto 3000 solo para redes privadas, y al
+final te dice la dirección para entrar desde otra máquina de la red.
+
+Se puede volver a correr: no pisa un `.env` que ya exista.
+
+```powershell
+# Actualizar
+powershell -ExecutionPolicy Bypass -File .\windows\actualizar.ps1
+
+# Ver el log
+Get-Content .\logs\konekt-sales.log -Tail 40 -Wait -Encoding UTF8
+
+# Reiniciar / detener
+Restart-ScheduledTask -TaskName KonektSales
+Stop-ScheduledTask    -TaskName KonektSales
+```
+
+### Qué es distinto respecto a Linux
+
+Vale la pena tenerlo claro, porque son las razones para no quedarse aquí:
+
+| | Windows (ahora) | Linux (después) |
+| --- | --- | --- |
+| Se mantiene vivo con | Tarea programada | systemd |
+| Corre como | `SYSTEM` | usuario `konekt`, sin shell ni privilegios |
+| Cifrado | **No: HTTP plano** | HTTPS con certificado gratuito |
+| Expuesto a internet | No conviene | Sí, con nginx enfrente |
+
+**Sobre el HTTP sin cifrar:** tu contraseña no viaja en claro — el navegador la
+manda directo a Supabase, que siempre es HTTPS. Lo que sí cruza la red local sin
+cifrar es el token de sesión, en las llamadas a `/api/*`. En una red interna de
+confianza es un riesgo manejable por unas semanas; **para exponerlo a internet
+no lo es**. Ahí ya toca Linux con HTTPS.
+
+Por lo mismo, el instalador abre el puerto solo para perfiles de red **privada y
+de dominio**, nunca para redes públicas.
+
+### Cuando muevas todo a Linux
+
+En la máquina Windows, para que deje de levantar el servicio sola:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows\desinstalar.ps1
+```
+
+Quita la tarea programada y la regla del firewall. No toca el `.env`, ni el
+proyecto, ni nada de Supabase. **Los datos no se migran: ya están en Supabase**,
+así que el servidor nuevo solo necesita las mismas tres llaves en su `.env` y
+queda con todo.
 
 ## Antes de empezar
 

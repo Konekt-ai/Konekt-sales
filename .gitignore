@@ -19,3 +19,7 @@ Thumbs.db
 # Editores
 .vscode/
 .idea/
+
+# Logs del servicio en Windows
+logs/
+windows/node-ruta.txt

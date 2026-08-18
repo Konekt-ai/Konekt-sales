@@ -42,10 +42,15 @@ Para verificar que la llave de Anthropic se cargó: <http://localhost:3000/api/h
 server.js                       backend Express. Único que habla con Anthropic.
 package.json                    dependencias y scripts
 .env.example                    plantilla de configuración (copiar como .env)
+install-windows.ps1             instalador para Windows 10/11
 install.sh                      instalador para Debian/Ubuntu: un solo comando
 DEPLOY.md                       cómo subirlo a un VPS, paso a paso
 Dockerfile                      imagen de producción
 docker-compose.yml              camino con Docker
+windows/
+  ejecutar.cmd                  lanzador de la tarea programada, con log
+  actualizar.ps1                git pull + reinicio, con vuelta atrás si falla
+  desinstalar.ps1               quita la tarea y el firewall al migrar a Linux
 deploy/
   actualizar.sh                 git pull + reinicio, con vuelta atrás si falla
   konekt-sales.service          camino sin Docker: servicio de systemd
@@ -86,7 +91,18 @@ Anthropic.
 
 ## Desplegar
 
-En un servidor Debian o Ubuntu recién instalado:
+**En Windows 10/11** (PowerShell como administrador), para arrancar ya en la red
+interna:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+Instala Node si falta, pregunta las llaves, registra una tarea programada que
+levanta el servicio al prender la PC, y abre el puerto solo para redes privadas.
+Va por HTTP sin cifrar: sirve para la red interna, no para internet.
+
+**En un servidor Debian o Ubuntu** recién instalado:
 
 ```bash
 sudo git clone https://github.com/Konekt-ai/Konekt-sales.git /opt/konekt-sales
