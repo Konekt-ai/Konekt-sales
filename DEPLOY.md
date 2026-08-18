@@ -120,6 +120,66 @@ Cierra la ventana, abre otra como administrador y vuelve a correr el
 instalador. El `$ProgressPreference` no es adorno: sin él, PowerShell 5.1
 pinta una barra de progreso que hace la descarga varias veces más lenta.
 
+---
+
+## Verlo desde otras PCs con Tailscale
+
+Es la mejor forma de dar acceso al equipo sin publicar nada a internet: red
+privada cifrada, sin abrir puertos en el módem y sin depender de que el ISP dé
+IP fija.
+
+**En la PC servidor**, una vez instalada la aplicación:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows\tailscale.ps1
+```
+
+Comprueba que Tailscale esté instalado y conectado, que la aplicación responda,
+y te deja elegir entre dos formas de publicarla:
+
+| | Cómo se ve | Cifrado | Firewall |
+| --- | --- | --- | --- |
+| **`tailscale serve`** (recomendado) | `https://esta-pc.tu-tailnet.ts.net` | HTTPS con certificado válido | No hay que tocarlo |
+| Acceso directo | `http://100.x.y.z:3000` | Solo el de WireGuard | Abre el puerto al rango del tailnet |
+
+Las dos van cifradas de extremo a extremo por WireGuard, que es lo que hace
+Tailscale por debajo. La diferencia es que con `tailscale serve` además el
+navegador ve un certificado válido y no marca el sitio como inseguro.
+
+**En cada PC del equipo:** instalar Tailscale, iniciar sesión con la misma
+cuenta de Konekt, y abrir la dirección. Nada más.
+
+> **Nunca uses `tailscale funnel`.** Se parece a `serve` pero publica el sitio
+> a **internet entero**, y esta aplicación entra sin contraseña.
+
+### Si `tailscale serve` falla
+
+Casi siempre es porque faltan dos cosas en el panel de Tailscale
+(<https://login.tailscale.com/admin/dns>):
+
+- **MagicDNS** → Enable
+- **HTTPS Certificates** → Enable
+
+Actívalas y vuelve a correr el script.
+
+### Sobre el firewall
+
+El instalador crea **dos reglas** distintas:
+
+- Una para la red local, solo en perfiles privado y de dominio.
+- Otra para Tailscale, limitada a `100.64.0.0/10` pero en **todos** los
+  perfiles. Va aparte a propósito: Windows suele clasificar el adaptador de
+  Tailscale como red *pública*, así que la primera regla no lo cubriría y el
+  acceso por VPN fallaría sin explicación aparente. Lo que acota el riesgo no
+  es el perfil sino el rango: solo los equipos del tailnet tienen una dirección
+  ahí.
+
+### Si más adelante activas el login
+
+Con `tailscale serve` el sitio va por HTTPS, así que conviene poner
+`COOKIE_SEGURA=1` en el `.env` para que la cookie de sesión se marque como
+`Secure`.
+
 ### Qué es distinto respecto a Linux
 
 Vale la pena tenerlo claro, porque son las razones para no quedarse aquí:

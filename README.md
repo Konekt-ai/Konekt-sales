@@ -52,6 +52,7 @@ DEPLOY.md                       cómo subirlo a un VPS, paso a paso
 Dockerfile                      imagen de producción
 docker-compose.yml              camino con Docker
 windows/
+  tailscale.ps1                 publicar en el tailnet (https o acceso directo)
   ejecutar.cmd                  lanzador de la tarea programada, con log
   actualizar.ps1                git pull + reinicio, con vuelta atrás si falla
   desinstalar.ps1               quita la tarea y el firewall al migrar a Linux
@@ -124,9 +125,15 @@ interna:
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-Instala Node si falta, pregunta las llaves, registra una tarea programada que
-levanta el servicio al prender la PC, y abre el puerto solo para redes privadas.
-Va por HTTP sin cifrar: sirve para la red interna, no para internet.
+Instala Node si falta, registra una tarea programada que levanta el servicio al
+prender la PC, programa el respaldo diario y abre el puerto para la red local y
+para Tailscale.
+
+Para que lo vean desde otras PCs sin abrir nada al internet:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows\tailscale.ps1
+```
 
 **En un servidor Debian o Ubuntu** recién instalado:
 

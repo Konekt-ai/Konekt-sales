@@ -320,19 +320,33 @@ Amaril "Copia la carpeta respaldos a otro lado (USB, nube, otra PC) cada cierto 
 # ------------------------------------------------------------------
 Paso "Firewall"
 
-$reglaExiste = Get-NetFirewallRule -DisplayName $REGLA_FW -ErrorAction SilentlyContinue
-if ($reglaExiste) {
-    Verde "La regla del firewall ya existe."
+# Regla 1: red local. Solo perfiles privado y de dominio, nunca publico.
+if (Get-NetFirewallRule -DisplayName $REGLA_FW -ErrorAction SilentlyContinue) {
+    Verde "La regla de red local ya existe."
 } else {
     $r = Read-Host "Abro el puerto $PUERTO para la red local? [s/N]"
     if ($r -match '^[SsYy]') {
         New-NetFirewallRule -DisplayName $REGLA_FW -Direction Inbound -Protocol TCP `
             -LocalPort $PUERTO -Action Allow -Profile Private,Domain | Out-Null
-        Verde "Puerto $PUERTO abierto solo para redes privadas y de dominio."
+        Verde "Puerto $PUERTO abierto para redes privadas y de dominio."
         Amaril "No se abrio para redes publicas, a proposito."
     } else {
-        Amaril "Firewall sin tocar: solo se podra entrar desde esta misma PC."
+        Amaril "Red local sin abrir: solo se entrara desde esta misma PC."
     }
+}
+
+# Regla 2: Tailscale. Va aparte porque Windows suele clasificar el adaptador
+# de Tailscale como red publica, y la regla de arriba (Private/Domain) no lo
+# cubriria. Lo que acota el riesgo aqui no es el perfil sino RemoteAddress:
+# 100.64.0.0/10 es el rango que Tailscale asigna a sus nodos, y solo los
+# equipos del tailnet tienen una direccion ahi.
+$REGLA_TS = "Konekt Sales - Tailscale ($PUERTO)"
+if (Get-NetFirewallRule -DisplayName $REGLA_TS -ErrorAction SilentlyContinue) {
+    Verde "La regla de Tailscale ya existe."
+} else {
+    New-NetFirewallRule -DisplayName $REGLA_TS -Direction Inbound -Protocol TCP `
+        -LocalPort $PUERTO -RemoteAddress "100.64.0.0/10" -Action Allow -Profile Any | Out-Null
+    Verde "Puerto $PUERTO abierto para los equipos del tailnet."
 }
 
 # ------------------------------------------------------------------
@@ -376,6 +390,7 @@ Write-Host "  Reiniciar:    Restart-ScheduledTask -TaskName $TAREA"
 Write-Host "  Usuarios:     npm run usuario -- listar"
 Write-Host "  Respaldar:    npm run respaldar"
 Write-Host "  Activar IA:   pon ANTHROPIC_API_KEY en el .env y reinicia"
+Write-Host "  Ver por VPN:  powershell -ExecutionPolicy Bypass -File .\windows\tailscale.ps1"
 Write-Host "  Detener:      Stop-ScheduledTask -TaskName $TAREA"
 Write-Host "  Actualizar:   powershell -ExecutionPolicy Bypass -File .\windows\actualizar.ps1"
 Write-Host "  Desinstalar:  powershell -ExecutionPolicy Bypass -File .\windows\desinstalar.ps1"
