@@ -13,7 +13,7 @@ set -euo pipefail
 
 DESTINO="/opt/konekt-sales"
 USUARIO="konekt"
-NODE_MAYOR="22"
+NODE_MAYOR="24"
 
 verde()  { printf '\033[0;32m%s\033[0m\n' "$*"; }
 azul()   { printf '\033[0;34m%s\033[0m\n' "$*"; }
@@ -75,12 +75,15 @@ apt-get update -qq
 apt-get install -y -qq curl ca-certificates git rsync >/dev/null
 verde "Herramientas basicas listas."
 
+# Se comprueba la capacidad, no el numero de version: lo que hace falta es que
+# exista node:sqlite sin bandera, y eso depende del parche, no solo del mayor.
 NODE_OK=0
 if command -v node >/dev/null; then
-  MAYOR="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$MAYOR" -ge 18 ]; then
+  if node -e "require('node:sqlite')" >/dev/null 2>&1; then
     NODE_OK=1
-    verde "Node ya instalado: $(node -v)"
+    verde "Node ya instalado: $(node -v)  (node:sqlite disponible)"
+  else
+    amaril "El Node instalado ($(node -v)) no trae node:sqlite. Se instalara uno nuevo."
   fi
 fi
 if [ "$NODE_OK" -eq 0 ]; then

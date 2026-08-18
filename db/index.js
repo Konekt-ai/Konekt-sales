@@ -10,7 +10,18 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { DatabaseSync } = require("node:sqlite");
+// node:sqlite entro en Node 22.5 y dejo de necesitar bandera en 22.13 / 23.4.
+// Sin este aviso, un Node viejo falla con "Cannot find module 'node:sqlite'",
+// que no le dice nada a nadie.
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = require("node:sqlite"));
+} catch (e) {
+  console.error("\n  Este proyecto necesita Node 22.13 o superior (recomendado: 24 LTS).");
+  console.error("  Tienes " + process.version + ", que no trae el modulo node:sqlite.");
+  console.error("  Actualiza Node y vuelve a intentar.\n");
+  process.exit(1);
+}
 
 const RAIZ = path.join(__dirname, "..");
 const RUTA_DB = process.env.DB_RUTA || path.join(RAIZ, "datos", "konekt.db");

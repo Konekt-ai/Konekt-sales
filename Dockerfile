@@ -4,14 +4,14 @@
 #  Konekt Sales
 #  Imagen chica y sin herramientas de compilación en la capa final.
 # ---------------------------------------------------------------------
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 # Se copian solo los manifiestos primero: mientras no cambien, Docker reutiliza
 # la capa de node_modules y la reconstrucción es de segundos.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 ENV NODE_ENV=production \

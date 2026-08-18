@@ -5,7 +5,7 @@
   "description": "Konekt Sales — CRM + generador de propuestas y cotizaciones con IA. Prototipo en desarrollo.",
   "main": "server.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "scripts": {
     "start": "node server.js",

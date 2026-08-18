@@ -10,7 +10,9 @@ La API key vive solo en el servidor; el navegador nunca la ve.
 
 ## Correr en local
 
-1. Instalar [Node.js 18 o superior](https://nodejs.org)
+1. Instalar [Node.js 22.13 o superior](https://nodejs.org) (recomendado: 24 LTS).
+   La base de datos usa el módulo `node:sqlite`, que no existe en versiones
+   anteriores.
 2. Instalar dependencias:
    ```bash
    npm install

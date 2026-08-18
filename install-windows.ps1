@@ -78,17 +78,25 @@ function Buscar-Node {
     return $null
 }
 
-function VersionMayorDeNode {
+# Se comprueba la capacidad, no el numero de version: lo que hace falta es que
+# exista node:sqlite sin bandera, y eso depende del parche, no solo del mayor.
+function SirveEsteNode {
     param([string]$Exe)
-    try { return [int]((& $Exe -v).TrimStart("v").Split(".")[0]) } catch { return 0 }
+    try {
+        & $Exe -e "require('node:sqlite')" 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
 }
 
 $nodeExe = Buscar-Node
 
-if ($nodeExe -and (VersionMayorDeNode $nodeExe) -ge 18) {
-    Verde "Node ya instalado: $(& $nodeExe -v)"
+if ($nodeExe -and (SirveEsteNode $nodeExe)) {
+    Verde "Node ya instalado: $(& $nodeExe -v)  (node:sqlite disponible)"
 } else {
-    if ($nodeExe) { Amaril "El Node que hay es muy viejo: se necesita 18 o mas." }
+    if ($nodeExe) {
+        Amaril "El Node instalado ($(& $nodeExe -v)) no trae node:sqlite."
+        Amaril "Hace falta Node 22.13 o superior. Se instalara uno nuevo."
+    }
     $nodeExe = $null
 
     # --- Intento 1: winget, forzando el origen 'winget' -------------------
@@ -101,6 +109,7 @@ if ($nodeExe -and (VersionMayorDeNode $nodeExe) -ge 18) {
                    --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
         } catch { }
         $nodeExe = Buscar-Node
+        if ($nodeExe -and -not (SirveEsteNode $nodeExe)) { $nodeExe = $null }
         if (-not $nodeExe) { Amaril "winget no pudo. Bajo el instalador oficial." }
     }
 
@@ -135,6 +144,7 @@ if ($nodeExe -and (VersionMayorDeNode $nodeExe) -ge 18) {
             }
             Remove-Item $msi -Force -ErrorAction SilentlyContinue
             $nodeExe = Buscar-Node
+            if ($nodeExe -and -not (SirveEsteNode $nodeExe)) { $nodeExe = $null }
         } catch {
             Amaril "Fallo la descarga directa: $_"
         }
@@ -145,7 +155,7 @@ if ($nodeExe -and (VersionMayorDeNode $nodeExe) -ge 18) {
         Rojo "No se pudo instalar Node automaticamente."
         Rojo ""
         Rojo "Hazlo a mano, son dos minutos:"
-        Rojo "  1. Baja el instalador LTS de https://nodejs.org"
+        Rojo "  1. Baja el instalador LTS de https://nodejs.org (version 22.13 o superior)"
         Rojo "  2. Instalalo dando Siguiente a todo"
         Rojo "  3. Cierra esta ventana y abre otra como administrador"
         Rojo "  4. Vuelve a correr install-windows.ps1"
