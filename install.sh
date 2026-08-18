@@ -115,14 +115,7 @@ if [ -f .env ]; then
   verde "Ya existe un .env. No lo toco."
 else
   cp .env.example .env
-  echo "Los datos se guardan en una base local (datos/konekt.db)."
-  echo "Lo unico por configurar es la llave de Anthropic, y solo sirve para los"
-  echo "dos botones de IA del generador. La puedes dejar vacia."
-  echo
-  read -r -p "  ANTHROPIC_API_KEY : " V_ANT
-
-  # El separador de sed es | para no chocar con las diagonales de la llave.
-  [ -n "${V_ANT:-}" ] && sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${V_ANT}|" .env
+  echo "Los datos se guardan en una base local (datos/konekt.db). Se crea sola."
 
   sed -i 's|^NODE_ENV=.*|NODE_ENV=production|' .env
   # Sin login: se entra directo, sin contrasena. Ver .env.example.
@@ -264,6 +257,7 @@ echo "  Reiniciar:    sudo systemctl restart konekt-sales"
 echo "  Actualizar:   cd ${DESTINO} && sudo ./deploy/actualizar.sh"
 echo
 echo "  Usuarios:     npm run usuario -- listar"
+echo "  Activar IA:   pon ANTHROPIC_API_KEY en el .env y reinicia"
 echo "  Respaldar:    npm run respaldar"
 echo ""
 echo "  Los datos viven en $DESTINO/datos/konekt.db."

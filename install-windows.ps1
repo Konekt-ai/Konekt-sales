@@ -180,14 +180,8 @@ if (Test-Path $rutaEnv) {
     if (-not (Test-Path $plantilla)) { Morir "Falta .env.example" }
 
     Write-Host "Los datos se guardan en una base local (datos\konekt.db)."
-    Write-Host "Lo unico que hay que configurar es la llave de Anthropic, y solo"
-    Write-Host "sirve para los dos botones de IA del generador. Puedes dejarla vacia."
-    Write-Host ""
-    $vAnt = Read-Host "  ANTHROPIC_API_KEY "
-
+    Write-Host "No hay nada que configurar: se crea sola."
     $txt = Get-Content $plantilla -Raw
-
-    if ($vAnt) { $txt = $txt -replace '(?m)^ANTHROPIC_API_KEY=.*', ("ANTHROPIC_API_KEY=" + $vAnt) }
 
     $txt = $txt -replace '(?m)^NODE_ENV=.*', 'NODE_ENV=production'
     # Sin login: se entra directo, sin contrasena. Ver .env.example.
@@ -202,7 +196,7 @@ if (Test-Path $rutaEnv) {
     Verde ".env creado."
 }
 
-# Solo administradores y SYSTEM pueden leerlo: adentro van las llaves.
+# Solo administradores y SYSTEM pueden leerlo: aqui iria la llave de IA.
 try {
     icacls $rutaEnv /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(F)" | Out-Null
     Verde "Permisos del .env restringidos."
@@ -379,6 +373,9 @@ foreach ($ip in $ips) {
 Write-Host ""
 Write-Host "  Ver el log:   Get-Content '$carpetaLogs\konekt-sales.log' -Tail 40 -Wait -Encoding UTF8"
 Write-Host "  Reiniciar:    Restart-ScheduledTask -TaskName $TAREA"
+Write-Host "  Usuarios:     npm run usuario -- listar"
+Write-Host "  Respaldar:    npm run respaldar"
+Write-Host "  Activar IA:   pon ANTHROPIC_API_KEY en el .env y reinicia"
 Write-Host "  Detener:      Stop-ScheduledTask -TaskName $TAREA"
 Write-Host "  Actualizar:   powershell -ExecutionPolicy Bypass -File .\windows\actualizar.ps1"
 Write-Host "  Desinstalar:  powershell -ExecutionPolicy Bypass -File .\windows\desinstalar.ps1"

@@ -1250,6 +1250,8 @@ async function arrancar(){
 
   if(!usuario){ el.innerHTML=pantallaLogin(); return; }
   window.__sinLogin=sinLogin;
+  // Sin llave de Anthropic los dos botones de IA se muestran apagados.
+  window.__hayIA=!!(salud && salud.anthropic);
 
   perfil=usuario;
   pintarUsuario();
@@ -1485,7 +1487,9 @@ function buildForm(s){
 
   <details class="grp" open><summary>${A(12)} Paso 2 · Cuéntame del cliente y el proyecto</summary><div class="gbody">
     <div class="fld"><textarea id="ctx" class="ctx" placeholder="Ej.: Es una fábrica de muebles que controla inventarios en Excel, tiene problemas para saber cuánto material tiene disponible, quiere controlar órdenes de producción, pedidos y tiempos de entrega. Necesita dashboard, inventarios, producción y alertas. La propuesta sería de $120,000, con 50% de anticipo y un tiempo estimado de 3 meses." oninput="state.contexto=this.value">${esc(s.contexto)}</textarea></div>
-    <button class="analyze" onclick="analizar()">${A(13)} Analizar con IA</button>
+    ${window.__hayIA
+       ? `<button class="analyze" onclick="analizar()">${A(13)} Analizar con IA</button>`
+       : `<button class="analyze" onclick="avisoSinIA()" style="opacity:.55;cursor:help">${A(13)} Analizar con IA · sin configurar</button>`}
     <div id="ai-status" class="note">${esc(s.aiStatus||"")}</div>
   </div></details>
 
@@ -1498,7 +1502,7 @@ function buildForm(s){
     ${tf("Folio (CA-###)","meta.folio")}
     <div class="fld"><label>Módulos detectados</label><div class="chips">${chips||'<span class="note">Ninguno todavía.</span>'}</div>
       <button class="add" style="margin-top:8px" onclick="addTo('prop.modulos',{n:'Nuevo módulo',d:'Qué hace y qué incluye.',tag:'Beneficio'})">+ Agregar módulo</button></div>
-    ${s.analizado?`<button class="analyze redact" onclick="redactar()">${A(13)} Redactar propuesta con IA</button>`:``}
+    ${s.analizado&&window.__hayIA?`<button class="analyze redact" onclick="redactar()">${A(13)} Redactar propuesta con IA</button>`:``}
   </div></details>
 
   <div class="finos">Ajustes finos (opcional) · corrige cualquier texto</div>
@@ -1656,6 +1660,17 @@ async function apiFetch(ruta,cuerpo){
 }
 function val0(x){return (x!=null && x!=="No especificado" && x!=="")?x:null;}
 function clampStr(s,max){s=String(s==null?"":s).trim();if(s.length<=max)return s;return s.slice(0,max-1).replace(/\s+\S*$/,"")+"…";}
+
+// Los dos botones de IA necesitan una llave de Anthropic en el .env del
+// servidor. Sin ella no se ocultan del todo: se dejan visibles y apagados,
+// para que se vea que la funcion existe y por que no esta disponible.
+function avisoSinIA(){
+  alert("Los botones de IA necesitan una llave de Anthropic.\n\n"
+      + "El generador funciona completo sin ella: puedes llenar la propuesta y "
+      + "la cotizacion a mano y exportarlas igual.\n\n"
+      + "Para activarlos: pon ANTHROPIC_API_KEY en el archivo .env del servidor "
+      + "y reinicia el servicio.");
+}
 
 async function analizar(){
   const el=document.getElementById("ctx");const txt=((el&&el.value)||state.contexto||"").trim();state.contexto=txt;

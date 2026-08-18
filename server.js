@@ -376,7 +376,12 @@ const servidor = app.listen(PORT, HOST, () => {
   console.log(`\n  Konekt Sales · ${EN_PRODUCCION ? "producción" : "desarrollo"}`);
   console.log(`  Escuchando en http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   console.log(`  Modelo: ${MODEL}\n`);
-  aviso(!!API_KEY, "ANTHROPIC_API_KEY cargada", "Falta ANTHROPIC_API_KEY — los botones de IA no van a funcionar");
+  if (API_KEY) {
+    console.log("  ✓ IA activa (" + MODEL + ")");
+  } else {
+    console.log("  · Sin llave de Anthropic: los dos botones de IA del generador");
+    console.log("    salen desactivados. Todo lo demás funciona igual.");
+  }
   console.log("  ✓ Base de datos: " + db.RUTA_DB);
   if (auth.SIN_LOGIN) {
     try { auth.usuarioLocal(); } catch (e) { console.error("[usuario local]", e.message); }
