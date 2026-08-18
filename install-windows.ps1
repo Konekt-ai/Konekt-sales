@@ -63,36 +63,99 @@ Verde "Proyecto: $APP"
 # ------------------------------------------------------------------
 Paso "Node.js"
 
-$nodeExe = $null
-$cmdNode = Get-Command node -ErrorAction SilentlyContinue
-if ($cmdNode) {
-    $version = (& node -v).TrimStart("v")
-    $mayor = [int]($version.Split(".")[0])
-    if ($mayor -ge 18) {
-        $nodeExe = $cmdNode.Source
-        Verde "Node ya instalado: v$version"
-    } else {
-        Amaril "Node v$version es muy viejo, se necesita 18 o mas."
+# PowerShell 5.1 puede negociar TLS 1.0 por omision y nodejs.org lo rechaza.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+function Buscar-Node {
+    # Se relee el PATH del registro: un instalador que acaba de correr no
+    # actualiza el PATH de esta sesion.
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    $c = Get-Command node -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($p in @("$env:ProgramFiles\nodejs\node.exe", "${env:ProgramFiles(x86)}\nodejs\node.exe")) {
+        if (Test-Path $p) { return $p }
     }
+    return $null
 }
 
-if (-not $nodeExe) {
+function VersionMayorDeNode {
+    param([string]$Exe)
+    try { return [int]((& $Exe -v).TrimStart("v").Split(".")[0]) } catch { return 0 }
+}
+
+$nodeExe = Buscar-Node
+
+if ($nodeExe -and (VersionMayorDeNode $nodeExe) -ge 18) {
+    Verde "Node ya instalado: $(& $nodeExe -v)"
+} else {
+    if ($nodeExe) { Amaril "El Node que hay es muy viejo: se necesita 18 o mas." }
+    $nodeExe = $null
+
+    # --- Intento 1: winget, forzando el origen 'winget' -------------------
+    # Sin --source, winget tambien intenta refrescar el origen 'msstore', que
+    # pide aceptar contratos y suele tronar con 0x80190194 (404).
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-Host "Instalando Node.js LTS con winget..."
-        winget install --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
-        # winget no refresca el PATH de esta sesion: se relee del registro.
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        $cmdNode = Get-Command node -ErrorAction SilentlyContinue
-        if ($cmdNode) { $nodeExe = $cmdNode.Source }
+        Write-Host "Intentando con winget..."
+        try {
+            winget install --id OpenJS.NodeJS.LTS --source winget --silent `
+                   --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+        } catch { }
+        $nodeExe = Buscar-Node
+        if (-not $nodeExe) { Amaril "winget no pudo. Bajo el instalador oficial." }
     }
+
+    # --- Intento 2: MSI directo de nodejs.org ------------------------------
+    # No depende de winget ni de la Microsoft Store.
     if (-not $nodeExe) {
-        Morir "No se pudo instalar Node. Bajalo de https://nodejs.org (version LTS), reinicia PowerShell y vuelve a correr esto."
+        try {
+            Write-Host "Consultando cual es la version LTS..."
+            $indice = Invoke-RestMethod "https://nodejs.org/dist/index.json" -TimeoutSec 30 -UseBasicParsing
+            $lts = $indice | Where-Object { $_.lts } | Select-Object -First 1
+            if (-not $lts) { throw "no se pudo leer el listado de versiones" }
+
+            $arch = "x86"
+            if ([Environment]::Is64BitOperatingSystem) { $arch = "x64" }
+
+            $url = "https://nodejs.org/dist/$($lts.version)/node-$($lts.version)-$arch.msi"
+            $msi = Join-Path $env:TEMP "node-$($lts.version)-$arch.msi"
+
+            Write-Host "Bajando Node $($lts.version) $arch (unos 30 MB)..."
+            # Sin esto, Invoke-WebRequest pinta una barra de progreso que en
+            # PowerShell 5.1 hace la descarga muchas veces mas lenta.
+            $progresoPrevio = $ProgressPreference
+            $ProgressPreference = "SilentlyContinue"
+            Invoke-WebRequest -Uri $url -OutFile $msi -TimeoutSec 900 -UseBasicParsing
+            $ProgressPreference = $progresoPrevio
+
+            Write-Host "Instalando..."
+            $proc = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+            # 3010 = instalado, pide reinicio. Para Node no hace falta.
+            if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+                Amaril "msiexec termino con codigo $($proc.ExitCode)."
+            }
+            Remove-Item $msi -Force -ErrorAction SilentlyContinue
+            $nodeExe = Buscar-Node
+        } catch {
+            Amaril "Fallo la descarga directa: $_"
+        }
     }
-    Verde "Node instalado: $(& node -v)"
+
+    if (-not $nodeExe) {
+        Write-Host ""
+        Rojo "No se pudo instalar Node automaticamente."
+        Rojo ""
+        Rojo "Hazlo a mano, son dos minutos:"
+        Rojo "  1. Baja el instalador LTS de https://nodejs.org"
+        Rojo "  2. Instalalo dando Siguiente a todo"
+        Rojo "  3. Cierra esta ventana y abre otra como administrador"
+        Rojo "  4. Vuelve a correr install-windows.ps1"
+        exit 1
+    }
+    Verde "Node instalado: $(& $nodeExe -v)"
 }
 
-# La tarea programada corre como SYSTEM, que tiene otro PATH: hay que
-# guardar la ruta absoluta del ejecutable.
+# La tarea programada corre como SYSTEM, que tiene otro PATH: hay que guardar
+# la ruta absoluta del ejecutable.
 Verde "Ruta de node: $nodeExe"
 
 # ------------------------------------------------------------------

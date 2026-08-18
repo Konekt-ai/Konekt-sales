@@ -85,6 +85,32 @@ Restart-ScheduledTask -TaskName KonektSales
 Stop-ScheduledTask    -TaskName KonektSales
 ```
 
+### Si falla la instalación de Node
+
+El instalador intenta tres cosas en orden: winget, descarga directa del MSI de
+nodejs.org, y si no, te dice cómo hacerlo a mano.
+
+winget falla seguido con `0x80190194` o *"Error al intentar actualizar el
+origen"*: es un problema del índice de paquetes de winget, no de tu máquina.
+Por eso existe el segundo camino, que no depende de winget ni de la Microsoft
+Store.
+
+Si quieres instalarlo por tu cuenta antes de correr el instalador:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$v = (Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object lts | Select-Object -First 1).version
+$ProgressPreference = "SilentlyContinue"
+Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-x64.msi" -OutFile "$env:TEMP
+ode.msi" -UseBasicParsing
+Start-Process msiexec -ArgumentList "/i `"$env:TEMP
+ode.msi`" /qn /norestart" -Wait
+```
+
+Cierra la ventana, abre otra como administrador y vuelve a correr el
+instalador. El `$ProgressPreference` no es adorno: sin él, PowerShell 5.1
+pinta una barra de progreso que hace la descarga varias veces más lenta.
+
 ### Qué es distinto respecto a Linux
 
 Vale la pena tenerlo claro, porque son las razones para no quedarse aquí:
